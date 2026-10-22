@@ -2,6 +2,27 @@
 
 Architectural and product decisions with rationale. Newest first.
 
+## 2026-10-22 — Keep usdcat for USDC; Model I/O rejected (measured)
+Model I/O writes crate in-process (5 ms vs ~70 ms for usdcat) but omits
+metersPerUnit and types material colors as float3/color4f — usdchecker fails.
+We author exact USD text and convert with /usr/bin/usdcat; if usdcat is missing
+the text layer is packaged (passes `usdchecker --arkit`).
+
+## 2026-10-22 — Defaults tuned for Motion performance (Jeff)
+Optimize on, facets 32 (true sides around the tube; exact normals keep shading
+round), one mesh + one material per icon (one draw call), Morton-ordered
+triangles. Apple silicon only — no Intel builds.
+
+## 2026-10-22 — Metal not used for meshing (measured)
+After CPU parallelization the GPU-friendly stage (grid sampling) takes 3–30 ms;
+the remaining cost is simplification, which is sequential graph work. A Metal
+compute path would add setup cost for no visible gain. Revisit only if users
+convert very large icons interactively.
+
+## 2026-10-22 — Temporary icon uses SF Symbol graph.3d (Jeff)
+Good starting point, but the SF Symbols license forbids symbols in app icons.
+Must be redrawn before any public release (Phase 5 blocker in BACKLOG).
+
 ## 2026-10-22 — Free and open source (Jeff)
 MIT license, public repo, Tent Studios as publisher. Overrides the house
 default of proprietary/paid: Tubeline is a community freebie for motion designers.

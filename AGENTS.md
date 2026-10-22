@@ -14,7 +14,7 @@ Single source of truth for AI sessions in this repo. `CLAUDE.md` points here.
 - **Price:** Free. **License:** MIT, public repo (decision 2026-10-22).
   Distribution: notarized Developer ID build (GitHub releases / Gumroad);
   Mac App Store optional later.
-- **macOS target:** 14.0+ (Sonoma)
+- **macOS target:** 14.0+ (Sonoma), Apple silicon only
 - **Core philosophy:** Feel like Apple could have shipped it. Native frameworks,
   zero third-party dependencies unless they earn their place. Output must be
   clean geometry a motion designer never has to fix.
@@ -25,7 +25,9 @@ Single source of truth for AI sessions in this repo. `CLAUDE.md` points here.
 modeled as a single signed distance field and meshed once. Never stitch
 separately-meshed tubes or leave interior faces — clean intersections are the
 product. Any optimization (decimation, retopology) must keep the mesh closed
-and manifold; `MeshingTests.assertWatertight` guards this.
+(no boundary edges); `MeshingTests.assertWatertight` guards this. Known gap:
+dual contouring can pinch two sheets onto one edge at crossing saddles
+(non-manifold, not a hole) — manifold DC is on the backlog.
 
 ## Tech Stack
 
@@ -65,7 +67,7 @@ cd app
 xcodegen generate
 xcodebuild -project Tubeline.xcodeproj -scheme Tubeline build
 xcodebuild -project Tubeline.xcodeproj -scheme Tubeline test
-# CLI
+# CLI (TL_PROFILE=1 prints per-stage timings)
 swift run -c release tubeline Samples -o /tmp/out --png
 ```
 
@@ -85,7 +87,7 @@ swift run -c release tubeline Samples -o /tmp/out --png
 | 0 | Scaffold: engine, CLI, app shell, tests, house layout | Done 2026-10-22 |
 | 1 | Core MVP: drop → preview → export, all edge cases (caps, dashes, fills, extrusion) | Done 2026-10-22 |
 | 2 | **Empirical Motion validation** — import into Motion: scale, Solid Color material, normals, performance with many icons | Open |
-| 3 | Geometry optimization: QEM decimation, faster meshing, welded USD normals (docs/research/2026-10-22-claude-mesh-optimization.md) | In progress |
+| 3 | Geometry optimization: QEM decimation, faster meshing (docs/research/2026-10-22-claude-mesh-optimization.md) | Core done 2026-10-22; manifold DC + welded USD normals open |
 | 4 | Polish: app icon, a11y, HIG audit, Settings window, user icon test pass | |
 | 5 | Ship: name research, notarized build, site/README screenshots | |
 

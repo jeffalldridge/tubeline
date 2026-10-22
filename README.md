@@ -6,9 +6,12 @@ Drag a pile of SVGs (or folders) onto the window. Every stroke becomes a round t
 
 ## How it turns lines into solids
 
-Tubeline does not sweep separate tubes and stitch them together. It describes the whole icon as one solid (a signed distance field built from every stroke, cap, joint and fill) and extracts a single watertight surface from it with dual contouring. That's why the awkward cases come out clean:
+Tubeline does not sweep separate tubes and stitch them together. It describes the whole icon as one solid (a signed distance field built from every stroke, cap, joint and fill) and extracts a single watertight surface from it with dual contouring. That's why the awkward cases come out clean.
+
+The dense surface is then simplified with quadric edge collapses, each one checked against the exact shape, so long straight runs and flat faces become a few large triangles while curves and seams keep their detail. A typical 24 pt line icon comes out around 5–10k triangles, ready to animate by the dozen.
 
 | Artwork | Result |
+
 | --- | --- |
 | Lines that cross or overlap | Fused into one surface. **Crisp** keeps a sharp seam; **Soft**/**Round** add a fillet. |
 | `stroke-linecap` butt / round / square | Flat end at the point / half-sphere / flat end extended by half the width. |
@@ -23,7 +26,8 @@ Also supported: `path` (all commands, arcs included), `line`, `polyline`, `polyg
 ## Settings
 
 - **Thickness**: tube diameter as a multiple of the stroke width.
-- **Facets**: roughly how many sides go around each tube (default 40). The preview shows the triangle count.
+- **Facets**: how many sides go around each tube (default 32). Normals come from the exact surface, so tubes shade round even when light. The preview shows the triangle count.
+- **Optimize mesh**: on by default; turn off to keep the dense grid mesh.
 - **Ends**: use the SVG's caps, or force round or flat.
 - **Intersections**: Crisp, Soft or Round, plus a blend slider.
 - **Filled shapes**: include or ignore; extrusion depth (pt) and edge rounding for fill-only shapes.
@@ -35,7 +39,7 @@ The output is a single mesh with smooth normals and one `UsdPreviewSurface` mate
 
 ## Building
 
-Requires macOS 14+, Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+Requires an Apple silicon Mac with macOS 14+, Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 (`brew install xcodegen`). The Xcode project is generated, not committed.
 
 ```bash
