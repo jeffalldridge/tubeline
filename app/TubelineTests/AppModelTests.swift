@@ -184,6 +184,149 @@ final class AppModelTests: XCTestCase {
         model.clear()
     }
 
+    func testRemovingSettledRowDoesNotCancelRemainingExports() async throws {
+        for firstFails in [false, true] {
+            let dir = try makeDirectory()
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let secondStarted = expectation(description: "Second conversion started")
+            let gate = DispatchSemaphore(value: 0)
+            let result = report()
+            let worker = ConversionQueue { source, output, _ in
+                if source.lastPathComponent == "second.svg" {
+                    secondStarted.fulfill()
+                    guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
+                } else if firstFails { throw CocoaError(.fileReadCorruptFile) }
+                try Data("export".utf8).write(to: output)
+                return result
+            }
+            let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+            let first = Job(source: dir.appendingPathComponent("first.svg"))
+            let second = Job(source: dir.appendingPathComponent("second.svg"))
+            model.jobs = [first, second]
+            model.exportAll()
+            await fulfillment(of: [secondStarted], timeout: 2)
+            if firstFails {
+                guard case .failed = first.status else { return XCTFail("First job should have failed") }
+            } else {
+                guard case .exported = first.status else { return XCTFail("First job should have completed") }
+            }
+            model.remove(first)
+            XCTAssertTrue(model.isExporting)
+            XCTAssertEqual(second.status, .working)
+            gate.signal()
+            try await waitForExport(model)
+            guard case .exported = second.status else { return XCTFail("Removing a settled row must preserve the remaining export") }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("second.usdz").path))
+        }
+    }
+
+    func testAutomaticExportQueuesNewAndReaddedInputsWithLatestSettings() async throws {
+        let dir = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let firstSource = dir.appendingPathComponent("first.svg")
+        let secondSource = dir.appendingPathComponent("second.svg")
+        try Data("first".utf8).write(to: firstSource)
+        try Data("second".utf8).write(to: secondSource)
+        let started = expectation(description: "Initial export started")
+        let gate = DispatchSemaphore(value: 0)
+        let result = report()
+        let worker = ConversionQueue { source, output, options in
+            if output.deletingLastPathComponent().lastPathComponent.hasPrefix(".Tubeline-"),
+               output.lastPathComponent == "first.usdz" {
+                started.fulfill()
+                guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
+            }
+            try Data("\(source.lastPathComponent):\(options.thickness)".utf8).write(to: output)
+            return result
+        }
+        let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+        let first = Job(source: firstSource)
+        model.jobs = [first]
+        model.exportOnDrop = true
+        model.exportAll()
+        await fulfillment(of: [started], timeout: 2)
+        model.add([firstSource, secondSource])
+        model.add([firstSource])
+        model.select(nil)
+        model.options.thickness = 2
+        gate.signal()
+        try await waitForExport(model)
+        XCTAssertEqual(model.jobs.count, 2)
+        XCTAssertEqual(first.revision, 2)
+        XCTAssertEqual(first.lastExportRevision, 2)
+        XCTAssertTrue(model.jobs.allSatisfy { if case .exported = $0.status { return true }; return false })
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("first.usdz"), encoding: .utf8), "first.svg:1.0")
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("first 2.usdz"), encoding: .utf8), "first.svg:2.0")
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("second.usdz"), encoding: .utf8), "second.svg:2.0")
+        let outputs = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil).filter { $0.pathExtension == "usdz" }
+        XCTAssertEqual(outputs.count, 3, "Repeated adds during work should coalesce into one follow-up export per job")
+        model.clear()
+    }
+
+    func testCancelAndWorkingRemovalDiscardQueuedAutomaticExports() async throws {
+        for removeWorkingRow in [false, true] {
+            let dir = try makeDirectory()
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let started = expectation(description: "Conversion started")
+            let finished = expectation(description: "Canceled worker finished")
+            let gate = DispatchSemaphore(value: 0)
+            let result = report()
+            let worker = ConversionQueue { _, output, _ in
+                started.fulfill()
+                guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
+                try Data("temporary".utf8).write(to: output)
+                finished.fulfill()
+                return result
+            }
+            let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+            let active = Job(source: dir.appendingPathComponent("active.svg"))
+            model.jobs = [active]
+            model.exportOnDrop = true
+            model.exportAll()
+            await fulfillment(of: [started], timeout: 2)
+            let queuedSource = dir.appendingPathComponent("queued.svg")
+            try Data("queued".utf8).write(to: queuedSource)
+            model.add([queuedSource])
+            model.select(nil)
+            if removeWorkingRow { model.remove(active) } else { model.cancelExports() }
+            XCTAssertFalse(model.isExporting)
+            XCTAssertEqual(model.jobs.count, removeWorkingRow ? 1 : 2)
+            XCTAssertEqual(model.jobs.last?.status, .pending)
+            if !removeWorkingRow { XCTAssertEqual(active.status, .cancelled) }
+            gate.signal()
+            await fulfillment(of: [finished], timeout: 2)
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertFalse(model.isExporting)
+            let remaining = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            XCTAssertEqual(remaining, ["queued.svg"], "Cancellation must not restart queued automatic exports")
+            model.clear()
+        }
+    }
+
+    func testFailedAutomaticExportIsNotRetriedWithoutANewRequest() async throws {
+        let dir = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = dir.appendingPathComponent("broken.svg")
+        try Data("broken".utf8).write(to: source)
+        let attempted = expectation(description: "Automatic export attempted once")
+        attempted.assertForOverFulfill = true
+        let worker = ConversionQueue { _, output, _ in
+            if output.deletingLastPathComponent().lastPathComponent.hasPrefix(".Tubeline-") { attempted.fulfill() }
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+        model.exportOnDrop = true
+        model.add([source])
+        model.select(nil)
+        await fulfillment(of: [attempted], timeout: 2)
+        try await waitForExport(model)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(model.isExporting)
+        guard case .failed = model.jobs.first?.status else { return XCTFail("Failure should remain available for an explicit retry") }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["broken.svg"])
+        model.clear()
+    }
+
     private func waitForPreview(_ model: AppModel) async throws {
         let deadline = Date().addingTimeInterval(3)
         while model.previewBusy && Date() < deadline { try await Task.sleep(for: .milliseconds(5)) }

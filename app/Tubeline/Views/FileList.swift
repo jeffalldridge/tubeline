@@ -25,7 +25,8 @@ struct FileList: View {
         .safeAreaInset(edge: .bottom) {
             if !model.jobs.isEmpty {
                 HStack {
-                    Text("\(model.jobs.count) icons").foregroundStyle(.secondary)
+                    Text(model.jobs.count == 1 ? "1 icon" : "\(model.jobs.count) icons")
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Button("Clear") { model.clear() }.disabled(model.isExporting)
                 }

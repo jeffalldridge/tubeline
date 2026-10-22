@@ -27,7 +27,12 @@ final class AppModel {
             savePreferences()
         }
     }
-    var exportOnDrop: Bool { didSet { savePreferences() } }
+    var exportOnDrop: Bool {
+        didSet {
+            if !exportOnDrop { automaticExportIDs.removeAll() }
+            savePreferences()
+        }
+    }
     var previewURL: URL?
     var previewStats: ConversionStats?
     var previewError: String?
@@ -46,6 +51,8 @@ final class AppModel {
     private var exportTask: Task<Void, Never>?
     private var exportID: UUID?
     private var exportingIDs: Set<Job.ID> = []
+    private var automaticExportIDs: Set<Job.ID> = []
+    private var isPreparingExport = false
     private let previewDir: URL
 
     init(defaults: UserDefaults = .standard, worker: ConversionQueue = ConversionQueue(),
@@ -135,26 +142,32 @@ final class AppModel {
         }
         exportError = nil
         var added: [Job] = []
+        var affected: [Job] = []
         for source in sources {
-            if let existing = jobs.first(where: { $0.source == source }) { refresh(existing) }
-            else {
+            if let existing = jobs.first(where: { $0.source == source }) {
+                refresh(existing, automaticallyExport: false)
+                affected.append(existing)
+            } else {
                 let job = Job(source: source)
                 jobs.append(job)
                 added.append(job)
+                affected.append(job)
             }
         }
         if selectedJob == nil { select(added.first?.id ?? jobs.first?.id) }
-        if exportOnDrop, !added.isEmpty { export(added) }
+        if exportOnDrop { enqueueAutomaticExport(affected) }
     }
 
-    func refresh(_ job: Job) {
+    func refresh(_ job: Job, automaticallyExport: Bool = true) {
         job.revision += 1
         if job.status != .working { job.status = job.lastExportURL.map(Job.Status.outdated) ?? .pending }
         if selection == job.id { schedulePreview(immediately: true) }
+        if automaticallyExport && exportOnDrop { enqueueAutomaticExport([job]) }
     }
     func refreshSelected() { if let job = selectedJob { refresh(job) } }
     func remove(_ job: Job) {
-        if exportingIDs.contains(job.id) { cancelExports() }
+        automaticExportIDs.remove(job.id)
+        if job.status == .working && exportingIDs.contains(job.id) { cancelExports() }
         jobs.removeAll { $0.id == job.id }
         if selection == job.id { select(jobs.first?.id) }
     }
@@ -185,6 +198,7 @@ final class AppModel {
     }
 
     func cancelExports() {
+        automaticExportIDs.removeAll()
         exportTask?.cancel()
         exportTask = nil
         exportID = nil
@@ -194,8 +208,27 @@ final class AppModel {
         isExporting = false
     }
 
+    private func enqueueAutomaticExport(_ list: [Job]) {
+        automaticExportIDs.formUnion(list.map(\.id))
+        drainAutomaticExports()
+    }
+
+    private func drainAutomaticExports() {
+        guard exportOnDrop, !isExporting, !isPreparingExport, !automaticExportIDs.isEmpty else { return }
+        let pending = jobs.filter { automaticExportIDs.contains($0.id) }
+        automaticExportIDs.removeAll()
+        // Capture current settings and source revisions when the request reaches the worker.
+        // Consuming the request first prevents failures from becoming automatic retries.
+        export(pending)
+    }
+
     func export(_ list: [Job]) {
-        guard !isExporting, !list.isEmpty else { return }
+        guard !isExporting, !isPreparingExport, !list.isEmpty else { return }
+        isPreparingExport = true
+        defer {
+            isPreparingExport = false
+            drainAutomaticExports()
+        }
         guard destination != .folder || folder != nil else {
             exportError = "Choose an output folder before exporting."
             return
@@ -272,6 +305,7 @@ final class AppModel {
             self.exportTask = nil
             self.exportID = nil
             self.exportSummary = "\(plans.count - failures) exported, \(warnings) with warnings, \(failures) failed."
+            self.drainAutomaticExports()
         }
     }
 
