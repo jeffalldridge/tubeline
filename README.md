@@ -1,5 +1,9 @@
 # Tubeline
 
+[![CI](https://github.com/jeffalldridge/tubeline/actions/workflows/ci.yml/badge.svg)](https://github.com/jeffalldridge/tubeline/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%C2%B7%20Apple%20silicon-lightgrey)
+
 A free little Mac utility that turns stroked SVG icons into 3D tube models (USDZ) you can drop into Apple Motion.
 
 Drag a pile of SVGs (or folders) onto the window. Every stroke becomes a round tube, as thick as the stroke, and the result is saved as a `.usdz` next to the original or in a folder you choose. A live 3D preview shows exactly what will be exported, with triangle count and real-world size.
@@ -11,7 +15,6 @@ Tubeline does not sweep separate tubes and stitch them together. It describes th
 The dense surface is then simplified with quadric edge collapses, each one checked against the exact shape, so long straight runs and flat faces become a few large triangles while curves and seams keep their detail. A typical 24 pt line icon comes out around 5–10k triangles, ready to animate by the dozen.
 
 | Artwork | Result |
-
 | --- | --- |
 | Lines that cross or overlap | Fused into one surface. **Crisp** keeps a sharp seam; **Soft**/**Round** add a fillet. |
 | `stroke-linecap` butt / round / square | Flat end at the point / half-sphere / flat end extended by half the width. |
@@ -74,6 +77,10 @@ app/                    Xcode app (project.yml), sandboxed SwiftUI app, unit tes
 Samples/                Test SVGs (Samples/User/ is yours, gitignored)
 docs/                   Research, release and testing notes
 ```
+
+## Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). An SVG that converts badly is the most useful bug report you can file.
 
 ## License
 

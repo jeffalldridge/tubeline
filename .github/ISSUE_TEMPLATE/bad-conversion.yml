@@ -1,0 +1,32 @@
+name: Bad conversion
+description: An SVG that converts to the wrong 3D shape, or fails to convert
+labels: [conversion]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks! A reproducible SVG is the fastest path to a fix. Only attach artwork you're allowed to share.
+  - type: textarea
+    id: svg
+    attributes:
+      label: SVG
+      description: Attach the file (zip it if GitHub refuses .svg) or paste a minimal SVG.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected vs. what happened
+      description: Screenshots of the preview help a lot.
+    validations:
+      required: true
+  - type: input
+    id: settings
+    attributes:
+      label: Settings or command line
+      placeholder: "tubeline icon.svg --facets 32 --fillet 0.3"
+  - type: input
+    id: version
+    attributes:
+      label: Tubeline version and macOS version
+    validations:
+      required: true
