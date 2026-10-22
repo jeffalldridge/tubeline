@@ -1,0 +1,19 @@
+# Build output
+.build/
+build/
+dist/
+DerivedData/
+*.xcarchive
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+
+# Local signing settings
+Config/Local.xcconfig
+
+# Test artwork and results (kept locally, not published)
+Samples/
+Tests/
+*.usdz
+
+.DS_Store

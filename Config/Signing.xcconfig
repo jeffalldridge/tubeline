@@ -1,0 +1,6 @@
+// Shared signing settings. Put your own team ID in Config/Local.xcconfig (gitignored):
+//   DEVELOPMENT_TEAM = ABCDE12345
+//   PRODUCT_BUNDLE_IDENTIFIER = com.yourname.tubeline
+PRODUCT_BUNDLE_IDENTIFIER = app.tubeline.Tubeline
+CODE_SIGN_STYLE = Automatic
+#include? "Local.xcconfig"
