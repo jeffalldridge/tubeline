@@ -9,24 +9,47 @@ import Foundation
 /// (decision 2026-10-22). Without `usdcat` the text layer is packaged as-is; that also
 /// passes `usdchecker --arkit`.
 public enum USDZWriter {
+    public enum ExportError: LocalizedError {
+        case invalidMesh(String)
+        case invalidColor
+        case packageTooLarge
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidMesh(let reason): return "The model cannot be exported: \(reason)."
+            case .invalidColor: return "The surface color must contain finite sRGB values between zero and one."
+            case .packageTooLarge: return "The model exceeds the USDZ package size limit."
+            }
+        }
+    }
+
     public static func write(mesh: Mesh, name: String, color: SIMD3<Double>,
                              surface: ConversionOptions.Surface, to url: URL) throws {
-        let usda = makeUSDA(mesh: mesh, name: primName(name), color: color, surface: surface)
+        let usda = try makeUSDA(mesh: mesh, name: name, color: color, surface: surface)
         let layer = convertToCrate(usda) ?? (data: Data(usda.utf8), ext: "usda")
-        let package = USDZArchive.make(entries: [("\(primName(name)).\(layer.ext)", layer.data)])
+        let entryName = "\(primName(name)).\(layer.ext)"
+        guard entryName.utf8.count <= Int(UInt16.max),
+              layer.data.count <= Int(UInt32.max) - 2 * entryName.utf8.count - 256 else {
+            throw ExportError.packageTooLarge
+        }
+        let package = USDZArchive.make(entries: [(entryName, layer.data)])
         try package.write(to: url, options: .atomic)
     }
 
     /// USD prim names must be identifiers.
     static func primName(_ s: String) -> String {
         var out = String(s.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) && $0.isASCII ? Character($0) : "_" })
-        if out.isEmpty || out.first!.isNumber { out = "_" + out }
+        if out.isEmpty || out.first?.isNumber == true { out = "_" + out }
         return out
     }
 
     public static func makeUSDA(mesh: Mesh, name: String, color: SIMD3<Double>,
-                                surface: ConversionOptions.Surface) -> String {
-        let rgb = "(\(color.x), \(color.y), \(color.z))"
+                                surface: ConversionOptions.Surface) throws -> String {
+        try validate(mesh: mesh, color: color)
+        let name = primName(name)
+        // Interface hex colors are sRGB; USD shader colors are linear Rec. 709.
+        let linear = SIMD3(linearComponent(color.x), linearComponent(color.y), linearComponent(color.z))
+        let rgb = "(\(linear.x), \(linear.y), \(linear.z))"
         // Solid: all color comes from emission, so lights add no shading.
         let shaderInputs = surface == .solid
             ? """
@@ -44,7 +67,7 @@ public enum USDZWriter {
         let b = mesh.bounds
         var s = ""
         s.reserveCapacity(mesh.positions.count * 70 + mesh.indices.count * 8)
-        func f(_ v: Float) -> String { v == v.rounded() ? String(Int(v)) : String(v) }
+        func f(_ v: Float) -> String { String(v) }
         func f3(_ v: SIMD3<Float>) -> String { "(\(f(v.x)), \(f(v.y)), \(f(v.z)))" }
 
         s += """
@@ -103,6 +126,29 @@ public enum USDZWriter {
 
         """
         return s
+    }
+
+    static func linearComponent(_ value: Double) -> Double {
+        value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+    }
+
+    private static func validate(mesh: Mesh, color: SIMD3<Double>) throws {
+        guard !mesh.positions.isEmpty, !mesh.indices.isEmpty, mesh.indices.count.isMultiple(of: 3) else {
+            throw ExportError.invalidMesh("there are no complete triangles")
+        }
+        guard mesh.normals.count == mesh.positions.count else {
+            throw ExportError.invalidMesh("vertex and normal counts differ")
+        }
+        guard mesh.positions.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }),
+              mesh.normals.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) else {
+            throw ExportError.invalidMesh("a vertex or normal is not finite")
+        }
+        guard mesh.indices.allSatisfy({ Int($0) < mesh.positions.count }) else {
+            throw ExportError.invalidMesh("a triangle references a missing vertex")
+        }
+        guard (0..<3).allSatisfy({ color[$0].isFinite && (0...1).contains(color[$0]) }) else {
+            throw ExportError.invalidColor
+        }
     }
 
     /// Converts text USD to the binary crate format with macOS's bundled `usdcat`, if available.

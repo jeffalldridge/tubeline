@@ -94,7 +94,11 @@ struct Decimator {
         var cost: Double
         var a: Int32, b: Int32
         var va: Int32, vb: Int32
-        static func < (l: Candidate, r: Candidate) -> Bool { l.cost < r.cost }
+        static func < (l: Candidate, r: Candidate) -> Bool {
+            if l.cost != r.cost { return l.cost < r.cost }
+            if l.a != r.a { return l.a < r.a }
+            return l.b < r.b
+        }
     }
 
     mutating func run() {
@@ -113,7 +117,7 @@ struct Decimator {
             let target = targetPosition(a, b)
             guard let shared = validate(a, b, target) else { continue }
             collapse(keep: a, remove: b, at: target, shared: shared)
-            for n in neighbors(a) where !locked[n] {
+            for n in neighbors(a).sorted() where !locked[n] {
                 heap.push(candidate(Int32(a), Int32(n)))
             }
         }

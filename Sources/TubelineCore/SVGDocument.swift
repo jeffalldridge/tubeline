@@ -33,6 +33,8 @@ public struct SVGDocument: Sendable {
     /// How many points one SVG user unit is. Design tools treat px and pt as equal,
     /// so this is 1 unless width/height scale the viewBox or use physical units.
     public var pointsPerUnit = 1.0
+    /// Physical print points per user unit under SVG's 96 px per inch convention.
+    public var physicalPointsPerUnit = 0.75
     /// Elements that were skipped because they are not supported (e.g. `<text>`, `<image>`).
     public var skipped: [String] = []
 
@@ -97,6 +99,9 @@ public final class SVGParser: NSObject, XMLParserDelegate {
     public func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
                        qualifiedName: String?, attributes attrs: [String: String]) {
         let tag = localName(name)
+        if tag == "svg", sawRoot {
+            doc.skipped.append("Nested <svg> viewport is unsupported; appearance may differ")
+        }
         var state = stack.last!
         let containers: Set<String> = ["defs", "clipPath", "mask", "symbol", "marker", "pattern",
                                        "linearGradient", "radialGradient", "filter", "metadata", "title", "desc"]
@@ -105,14 +110,29 @@ public final class SVGParser: NSObject, XMLParserDelegate {
         // Presentation attributes < CSS rules < style attribute.
         var props = state.props
         props.removeValue(forKey: "display")
-        for (k, v) in attrs where Self.inheritable.contains(k) || k == "display" { props[k] = v }
+        let unsupported: Set<String> = ["clip-path", "mask", "filter", "vector-effect"]
+        for (k, v) in attrs where Self.inheritable.contains(k) || k == "display" || unsupported.contains(k) { props[k] = v }
         for rule in cssRules where matches(rule.selector, tag: tag, attrs: attrs) {
             props.merge(rule.decls) { $1 }
         }
         if let style = attrs["style"] { props.merge(Self.parseDecls(style)) { $1 } }
+        for feature in unsupported.sorted() {
+            if let value = props[feature], value != "none" {
+                doc.skipped.append("Unsupported \(feature) on <\(tag)>; appearance may differ")
+            }
+        }
+        if props["transform"] != nil {
+            doc.skipped.append("CSS transform on <\(tag)> is unsupported; appearance may differ")
+        }
         state.props = props
         if props["display"] == "none" || props["visibility"] == "hidden" { state.ignored = true }
         if let t = attrs["transform"] { state.ctm = state.ctm.concatenating(Self.parseTransform(t)) }
+        let ctm = state.ctm
+        let xLength = hypot(ctm.a, ctm.b), yLength = hypot(ctm.c, ctm.d)
+        let metricScale = max(xLength, yLength, 1e-12)
+        if abs(xLength - yLength) > metricScale * 1e-8 || abs(ctm.a * ctm.c + ctm.b * ctm.d) > metricScale * metricScale * 1e-8 {
+            doc.skipped.append("Nonuniform scale or shear on <\(tag)> approximates stroke widths")
+        }
 
         if tag == "svg" && !sawRoot {
             sawRoot = true
@@ -150,7 +170,13 @@ public final class SVGParser: NSObject, XMLParserDelegate {
 
     private func emitShape(tag: String, attrs: [String: String], state: State) {
         let tol = tolerance / max(state.ctm.scaleFactor, 1e-9)
-        func num(_ k: String, _ def: Double = 0) -> Double { Self.length(attrs[k]) ?? def }
+        func num(_ k: String, _ def: Double = 0) -> Double { Self.userLength(attrs[k]) ?? def }
+        let geometryLengths = ["x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "width", "height"]
+        for key in geometryLengths {
+            if let value = attrs[key], Self.userLength(value) == nil {
+                doc.skipped.append("Unsupported \(key) length on <\(tag)>; appearance may differ")
+            }
+        }
 
         var polys: [Polyline2D]
         switch tag {
@@ -166,7 +192,7 @@ public final class SVGParser: NSObject, XMLParserDelegate {
             polys = [Polyline2D(points: pts, closed: tag == "polygon" && pts.count > 2)]
         case "rect":
             polys = rect(x: num("x"), y: num("y"), w: num("width"), h: num("height"),
-                         rx: Self.length(attrs["rx"]), ry: Self.length(attrs["ry"]), tol: tol)
+                         rx: Self.userLength(attrs["rx"]), ry: Self.userLength(attrs["ry"]), tol: tol)
         case "circle":
             let r = num("r")
             polys = ellipse(c: Vec2(num("cx"), num("cy")), rx: r, ry: r, tol: tol)
@@ -189,7 +215,10 @@ public final class SVGParser: NSObject, XMLParserDelegate {
         // SVG's default fill is black, but in icon files an implicit fill is almost always
         // an accident, so only an explicitly declared fill counts.
         let fillOn = Self.isPaint(p["fill"]) && opacity * (Double(p["fill-opacity"] ?? "") ?? 1) > 0
-        let strokeWidth = (Self.length(p["stroke-width"]) ?? 1) * state.ctm.scaleFactor
+        if let width = p["stroke-width"], Self.userLength(width) == nil {
+            doc.skipped.append("Unsupported stroke-width on <\(tag)>; appearance may differ")
+        }
+        let strokeWidth = (Self.userLength(p["stroke-width"]) ?? 1) * state.ctm.scaleFactor
 
         // A file with no paint declared anywhere is treated as plain centerlines.
         let implicitStroke = p["stroke"] == nil && p["fill"] == nil
@@ -197,8 +226,11 @@ public final class SVGParser: NSObject, XMLParserDelegate {
         if strokeOn || implicitStroke, strokeWidth > 0 {
             let cap = LineCap(rawValue: p["stroke-linecap"] ?? "butt") ?? .butt
             let k = state.ctm.scaleFactor
-            let dashes = Self.numberList(p["stroke-dasharray"] ?? "").map { $0 * k }
-            let dashOffset = (Self.length(p["stroke-dashoffset"]) ?? 0) * k
+            let rawDashes = p["stroke-dasharray"] ?? "none"
+            let dashLengths = rawDashes == "none" ? [] : Self.lengthList(rawDashes)
+            if dashLengths == nil { doc.skipped.append("Unsupported stroke-dasharray on <\(tag)>; appearance may differ") }
+            let dashes = (dashLengths ?? []).map { $0 * k }
+            let dashOffset = (Self.userLength(p["stroke-dashoffset"]) ?? 0) * k
             for poly in Dasher.split(polys, pattern: dashes, offset: dashOffset) {
                 doc.strokes.append(StrokePath(points: poly.points, closed: poly.closed, width: strokeWidth, cap: cap, element: element))
             }
@@ -247,12 +279,26 @@ public final class SVGParser: NSObject, XMLParserDelegate {
         let vb = Self.numberList(attrs["viewBox"] ?? "")
         if vb.count == 4, vb[2] > 0, vb[3] > 0 {
             doc.canvas = (Vec2(vb[0], vb[1]), Vec2(vb[2], vb[3]))
+            let sx = Self.cssPixels(attrs["width"]).map { $0 / vb[2] }
+            let sy = Self.cssPixels(attrs["height"]).map { $0 / vb[3] }
+            let aspect = attrs["preserveAspectRatio"] ?? "xMidYMid meet"
+            if let sx, let sy {
+                doc.physicalPointsPerUnit = (aspect.contains("slice") ? max(sx, sy) : min(sx, sy)) * 0.75
+                if aspect.contains("none") && abs(sx - sy) > max(sx, sy) * 1e-8 {
+                    doc.skipped.append("Nonuniform SVG viewport is unsupported; appearance may differ")
+                }
+            } else {
+                doc.physicalPointsPerUnit = (sx ?? sy ?? 1) * 0.75
+            }
+            if aspect != "xMidYMid meet" && aspect != "xMidYMid" {
+                doc.skipped.append("Custom SVG viewport alignment is unsupported; appearance may differ")
+            }
             if let w = Self.points(attrs["width"]) {
                 doc.pointsPerUnit = w / vb[2]
             } else if let h = Self.points(attrs["height"]) {
                 doc.pointsPerUnit = h / vb[3]
             }
-        } else if let w = Self.length(attrs["width"]), let h = Self.length(attrs["height"]), w > 0, h > 0,
+        } else if let w = Self.cssPixels(attrs["width"]), let h = Self.cssPixels(attrs["height"]), w > 0, h > 0,
                   !(attrs["width"] ?? "").hasSuffix("%") {
             doc.canvas = (.zero, Vec2(w, h))
         }
@@ -294,6 +340,42 @@ public final class SVGParser: NSObject, XMLParserDelegate {
         if s.hasSuffix("mm") { return v * 72 / 25.4 }
         if s.hasSuffix("pc") { return v * 12 }
         return v
+    }
+
+    /// SVG geometry lengths resolve to CSS user units before viewport scaling.
+    static func userLength(_ s: String?) -> Double? {
+        guard let s = s?.trimmingCharacters(in: .whitespaces).lowercased(), !s.isEmpty else { return nil }
+        var scanner = PathDataParser.Scanner(Array(s.utf8))
+        guard let value = scanner.number() else { return nil }
+        let suffix = String(decoding: scanner.c[scanner.i...], as: UTF8.self).trimmingCharacters(in: .whitespaces)
+        let factor: Double
+        switch suffix {
+        case "", "px": factor = 1
+        case "in": factor = 96
+        case "cm": factor = 96 / 2.54
+        case "mm": factor = 96 / 25.4
+        case "q": factor = 96 / 101.6
+        case "pt": factor = 96 / 72
+        case "pc": factor = 16
+        default: return nil
+        }
+        let resolved = value * factor
+        return resolved.isFinite ? resolved : nil
+    }
+
+    static func cssPixels(_ s: String?) -> Double? {
+        guard let value = userLength(s), value.isFinite, value > 0 else { return nil }
+        return value
+    }
+
+    static func lengthList(_ s: String) -> [Double]? {
+        let tokens = s.split { $0 == "," || $0.isWhitespace }
+        var values: [Double] = []
+        for token in tokens {
+            guard let value = userLength(String(token)) else { return nil }
+            values.append(value)
+        }
+        return values
     }
 
     static func numberList(_ s: String) -> [Double] {

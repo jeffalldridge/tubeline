@@ -165,13 +165,110 @@ struct FusedMesher {
         profiler.lap("faces (\(mesh.triangleCount) triangles)")
 
         // 4. Simplify and shade, then order for the GPU.
+        let denseContour = mesh
         if tolerance > 0 {
             mesh = simplify(mesh, creases: creases, lookup: lookup)
             profiler.lap("simplify and shade (\(mesh.triangleCount) triangles)")
         } else {
             splitCreaseNormals(&mesh, creases: creases, lookup: lookup)
         }
+        if !mesh.validation().isValid {
+            if denseContour.validation().isValid {
+                // A valid contour is preferable to changing the surface extractor when
+                // only simplification caused the failure.
+                mesh = denseContour
+                splitCreaseNormals(&mesh, creases: creases, lookup: lookup)
+            } else {
+                // Ambiguous cells can contain separate sheets. Tetrahedra resolve them
+                // consistently across the same sampled union.
+                mesh = tetrahedralSurface(field: field, nx: nx, ny: ny, nz: nz, origin: origin, lookup: lookup)
+                if tolerance > 0 {
+                    let dense = mesh
+                    let simplified = simplify(dense, creases: [], lookup: lookup)
+                    if simplified.validation().isValid { mesh = simplified } else {
+                        mesh = dense
+                        splitCreaseNormals(&mesh, creases: nil, lookup: lookup)
+                    }
+                } else {
+                    splitCreaseNormals(&mesh, creases: nil, lookup: lookup)
+                }
+            }
+            mesh.warnings.append("Complex intersections required a denser mesh to keep the surface closed. Reduce Detail if you need fewer triangles.")
+            profiler.lap("manifold fallback (\(mesh.triangleCount) triangles)")
+        }
         mesh.optimizeForGPU()
+        return mesh
+    }
+
+    /// Freudenthal's six tetrahedra share the same face diagonals in neighboring cells.
+    /// Each crossing belongs to a global grid edge, including the tetrahedral diagonals.
+    private func tetrahedralSurface(field: [Float], nx: Int, ny: Int, nz: Int,
+                                    origin: Vec3, lookup: SpatialLookup) -> Mesh {
+        let corners: [SIMD3<Int>] = [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]]
+        let tetrahedra = [[0,1,3,7], [0,3,2,7], [0,2,6,7], [0,6,4,7], [0,4,5,7], [0,5,1,7]]
+        // Keep crossings away from exactly zero-valued lattice vertices. The displacement
+        // is much smaller than one facet's sag, and avoids coincident Float vertices.
+        let iso = voxel * voxel * 0.01
+        var mesh = Mesh()
+        var vertexForEdge: [SIMD2<Int>: UInt32] = [:]
+        func vertex(_ a: Int, _ b: Int, _ positions: [Vec3], _ grid: [Int], _ values: [Double]) -> UInt32 {
+            let key = SIMD2(min(grid[a], grid[b]), max(grid[a], grid[b]))
+            if let found = vertexForEdge[key] { return found }
+            // Preserve the piecewise-linear field's topology. Snapping these crossings
+            // independently to the exact SDF can collapse distinct tetrahedral edges at
+            // a crease, reintroducing the degeneracies this fallback must avoid.
+            // Keep a small separation from shared lattice corners. Otherwise an almost
+            // zero sample creates sliver triangles that collapse after Float export.
+            let t = simd_clamp(values[a] / (values[a] - values[b]), 0.001, 0.999)
+            let p = positions[a] + (positions[b] - positions[a]) * t
+            let id = UInt32(mesh.positions.count)
+            vertexForEdge[key] = id
+            mesh.positions.append(SIMD3<Float>(p))
+            mesh.normals.append(SIMD3<Float>(lookup.gradient(p, eps: voxel * 0.02)))
+            return id
+        }
+        func triangle(_ a: UInt32, _ b: UInt32, _ c: UInt32, outward: Vec3) {
+            let p = Vec3(mesh.positions[Int(a)]), q = Vec3(mesh.positions[Int(b)]), r = Vec3(mesh.positions[Int(c)])
+            if simd_dot(simd_cross(q - p, r - p), outward) < 0 {
+                mesh.indices += [a, c, b]
+            } else { mesh.indices += [a, b, c] }
+        }
+        for k in 0..<(nz - 1) {
+            for j in 0..<(ny - 1) {
+                for i in 0..<(nx - 1) {
+                    let base = i + nx * (j + ny * k)
+                    if abs(Double(field[base]) - iso) > 1.8 * voxel { continue }
+                    let grid = corners.map { (i + $0.x) + nx * ((j + $0.y) + ny * (k + $0.z)) }
+                    let values = grid.map { Double(field[$0]) - iso }
+                    if values.allSatisfy({ $0 < 0 }) || values.allSatisfy({ $0 >= 0 }) { continue }
+                    let positions = corners.map { origin + Vec3(Double(i + $0.x), Double(j + $0.y), Double(k + $0.z)) * voxel }
+                    for tet in tetrahedra {
+                        let inside = tet.filter { values[$0] < 0 }, outside = tet.filter { values[$0] >= 0 }
+                        if inside.isEmpty || outside.isEmpty { continue }
+                        let inward = inside.reduce(Vec3.zero) { $0 + positions[$1] } / Double(inside.count)
+                        let outward = outside.reduce(Vec3.zero) { $0 + positions[$1] } / Double(outside.count) - inward
+                        if inside.count == 1 {
+                            let v = outside.map { vertex(inside[0], $0, positions, grid, values) }
+                            triangle(v[0], v[1], v[2], outward: outward)
+                        } else if outside.count == 1 {
+                            let v = inside.map { vertex(outside[0], $0, positions, grid, values) }
+                            triangle(v[0], v[1], v[2], outward: outward)
+                        } else {
+                            let a = vertex(inside[0], outside[0], positions, grid, values)
+                            let b = vertex(inside[0], outside[1], positions, grid, values)
+                            let c = vertex(inside[1], outside[1], positions, grid, values)
+                            let d = vertex(inside[1], outside[0], positions, grid, values)
+                            let pa = Vec3(mesh.positions[Int(a)]), pb = Vec3(mesh.positions[Int(b)]), pc = Vec3(mesh.positions[Int(c)])
+                            if simd_dot(simd_cross(pb - pa, pc - pa), outward) < 0 {
+                                mesh.indices += [a, c, b, a, d, c]
+                            } else {
+                                mesh.indices += [a, b, c, a, c, d]
+                            }
+                        }
+                    }
+                }
+            }
+        }
         return mesh
     }
 

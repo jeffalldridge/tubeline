@@ -8,23 +8,9 @@ final class MeshingTests: XCTestCase {
         return try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: options)
     }
 
-    /// A closed surface has no boundary: every edge is shared by an even number of triangles
-    /// (2, or 4 at the rare pinch where dual contouring joins two sheets at a saddle). Vertices
-    /// are welded by position first because crease vertices are duplicated for split normals.
     private func assertWatertight(_ m: Mesh, file: StaticString = #filePath, line: UInt = #line) {
-        var ids: [SIMD3<Float>: Int] = [:]
-        let weld = m.positions.map { p in ids[p] ?? { ids[p] = ids.count; return ids.count - 1 }() }
-        var edges: [SIMD2<Int>: Int] = [:]
-        for t in stride(from: 0, to: m.indices.count, by: 3) {
-            let v = (0..<3).map { weld[Int(m.indices[t + $0])] }
-            for k in 0..<3 {
-                let a = v[k], b = v[(k + 1) % 3]
-                guard a != b else { continue }
-                edges[SIMD2(min(a, b), max(a, b)), default: 0] += 1
-            }
-        }
-        let open = edges.values.filter { $0 % 2 != 0 }.count
-        XCTAssertEqual(open, 0, "\(open) of \(edges.count) edges are boundary edges (holes)", file: file, line: line)
+        let validation = m.validation()
+        XCTAssertTrue(validation.isValid, validation.summary, file: file, line: line)
     }
 
     func testCrossingStrokesFuseIntoOneWatertightSolid() throws {
@@ -98,4 +84,90 @@ final class MeshingTests: XCTestCase {
     func testEmptyDocumentThrows() {
         XCTAssertThrowsError(try mesh(##"<path d="M0 0h24" stroke="none"/>"##))
     }
+    func testFlatCapsDoNotChangeWhenStraightSegmentsAreSubdivided() throws {
+        var options = ConversionOptions()
+        options.caps = .flat
+        options.optimize = false
+        let plain = try mesh("<path d='M4 12h16'/>", options: options)
+        let split = try mesh("<path d='M4 12h0.1h15.9'/>", options: options)
+        XCTAssertEqual(plain.bounds.min.x, split.bounds.min.x, accuracy: 0.00001)
+        XCTAssertEqual(plain.bounds.max.x, split.bounds.max.x, accuracy: 0.00001)
+        assertWatertight(split)
+    }
+
+    func testChangingPhysicalScalePreservesTopology() throws {
+        let body = "<path d='M4 4 20 20'/><path d='M20 4 4 20'/>"
+        var options = ConversionOptions()
+        let small = try mesh(body, options: options)
+        options.sizing = .fixed
+        options.size = 24
+        let large = try mesh(body, options: options)
+        XCTAssertEqual(small.indices, large.indices)
+        assertWatertight(small)
+        assertWatertight(large)
+    }
+
+    func testMeshValidationRejectsDegeneratesAndDuplicateFaces() {
+        let bad = Mesh(positions: [[0,0,0], [1,0,0], [0,1,0]],
+                       normals: [[0,0,1], [0,0,1], [0,0,1]],
+                       indices: [0,1,2, 0,1,2, 0,0,1])
+        let result = bad.validation()
+        XCTAssertFalse(result.isValid)
+        XCTAssertEqual(result.degenerateTriangles, 1)
+        XCTAssertEqual(result.duplicateTriangles, 1)
+        XCTAssertEqual(result.inconsistentEdges, 3)
+    }
+
+    func testMeshValidationAcceptsDisconnectedClosedComponents() throws {
+        assertWatertight(try mesh("<path d='M2 4h4M18 20h4'/>"))
+    }
+
+    func testPhysicalSizingUsesCSSPixels() throws {
+        let document = try SVGParser.parse(data: Data("<svg viewBox='0 0 96 96' width='1in' height='1in' stroke='black' stroke-width='2'><path d='M0 48h96'/></svg>".utf8))
+        var options = ConversionOptions()
+        options.sizing = .physical
+        let m = try Converter.buildMesh(document, options: options)
+        XCTAssertEqual(m.bounds.size.x, 2.54, accuracy: 0.003)
+    }
+
+    func testInvalidDocumentCoordinatesThrowBeforeSampling() throws {
+        var document = try SVGParser.parse(data: Data("<svg stroke='black'><path d='M0 0h10'/></svg>".utf8))
+        document.canvas = (.zero, [Double.infinity, 24])
+        XCTAssertThrowsError(try Converter.buildMesh(document, options: ConversionOptions()))
+        var options = ConversionOptions()
+        options.thickness = .nan
+        XCTAssertThrowsError(try mesh("<path d='M0 0h10'/>", options: options))
+    }
+
+    func testIntegerOutputScalePreservesTopology() throws {
+        let body = "<path d='M4 4 20 20'/><path d='M20 4 4 20'/>"
+        let original = try mesh(body)
+        var options = ConversionOptions()
+        options.outputScale = 100
+        let enlarged = try mesh(body, options: options)
+        XCTAssertEqual(original.indices, enlarged.indices)
+        XCTAssertEqual(enlarged.bounds.size.x, original.bounds.size.x * 100, accuracy: 0.00001)
+        assertWatertight(enlarged)
+    }
+
+    func testOlderSavedSettingsKeepDefaultsForNewFields() throws {
+        let options = try JSONDecoder().decode(ConversionOptions.self, from: Data("{\"thickness\":2,\"facets\":16}".utf8))
+        XCTAssertEqual(options.thickness, 2)
+        XCTAssertEqual(options.facets, 16)
+        XCTAssertEqual(options.outputScale, 1)
+        XCTAssertEqual(options.sizing, .points)
+        XCTAssertEqual(try JSONDecoder().decode(ConversionOptions.self, from: JSONEncoder().encode(options)), options)
+    }
+
+    func testAmbiguousContourFallbackProducesAClosedManifold() {
+        let cm = 2.54 / 72
+        let groups = [
+            PrimitiveGroup(primitives: [.capsule(Vec3(-8,-8,0) * cm, Vec3(8,8,0) * cm, cm)]),
+            PrimitiveGroup(primitives: [.capsule(Vec3(8,-8,0) * cm, Vec3(-8,8,0) * cm, cm)]),
+        ]
+        let m = FusedMesher(groups: groups, voxel: 2 * .pi * cm / (32 * 1.4), blend: 0).build()
+        assertWatertight(m)
+        XCTAssertTrue(m.warnings.contains { $0.contains("denser mesh") })
+    }
+
 }

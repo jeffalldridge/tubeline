@@ -1,10 +1,18 @@
 import Foundation
 import simd
 
+struct TubeClip {
+    var origin: Vec3
+    var outward: Vec3
+    func distance(_ p: Vec3) -> Double { simd_dot(p - origin, outward) }
+}
+
 /// One solid piece of the icon in output space (z = 0 is the icon plane).
 enum Primitive {
     /// Segment with round ends.
     case capsule(Vec3, Vec3, Double)
+    /// Local end planes trim every segment near an open cap, including short interior segments.
+    case clippedCapsule(Vec3, Vec3, Double, TubeClip?, TubeClip?)
     /// Segment with flat ends.
     case cylinder(Vec3, Vec3, Double)
     case sphere(Vec3, Double)
@@ -13,7 +21,7 @@ enum Primitive {
 
     var bounds: Box3 {
         switch self {
-        case let .capsule(a, b, r), let .cylinder(a, b, r):
+        case let .capsule(a, b, r), let .cylinder(a, b, r), let .clippedCapsule(a, b, r, _, _):
             var box = Box3(); box.include(a); box.include(b)
             return box.expanded(by: r)
         case let .sphere(c, r):
@@ -29,6 +37,11 @@ enum Primitive {
             let pa = p - a, ba = b - a
             let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
             return simd_length(pa - ba * h) - r
+        case let .clippedCapsule(a, b, r, start, end):
+            var d = Primitive.capsule(a, b, r).distance(p)
+            if let start { d = max(d, start.distance(p)) }
+            if let end { d = max(d, end.distance(p)) }
+            return d
         case let .cylinder(a, b, r):
             // Exact capped-cylinder distance (Inigo Quilez).
             let ba = b - a, pa = p - a

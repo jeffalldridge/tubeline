@@ -6,13 +6,15 @@ import simd
 /// on the hot path) because it is queried millions of times from many threads at once.
 struct SpatialLookup {
     private struct Flat {
-        enum Kind: UInt8 { case capsule, cylinder, sphere, slab }
+        enum Kind: UInt8 { case capsule, cylinder, sphere, slab, clippedCapsule }
         var kind: Kind
         var group: Int32
         var slab: Int32
         var a: Vec3
         var b: Vec3
         var r: Double
+        var startClip: TubeClip? = nil
+        var endClip: TubeClip? = nil
     }
 
     private let prims: [Flat]
@@ -36,6 +38,8 @@ struct SpatialLookup {
             for p in g.primitives {
                 switch p {
                 case let .capsule(a, b, r): flat.append(Flat(kind: .capsule, group: Int32(gi), slab: -1, a: a, b: b, r: r))
+                case let .clippedCapsule(a, b, r, start, end):
+                    flat.append(Flat(kind: .clippedCapsule, group: Int32(gi), slab: -1, a: a, b: b, r: r, startClip: start, endClip: end))
                 case let .cylinder(a, b, r): flat.append(Flat(kind: .cylinder, group: Int32(gi), slab: -1, a: a, b: b, r: r))
                 case let .sphere(c, r): flat.append(Flat(kind: .sphere, group: Int32(gi), slab: -1, a: c, b: c, r: r))
                 case let .slab(s):
@@ -97,6 +101,13 @@ struct SpatialLookup {
             let pa = p - f.a, ba = f.b - f.a
             let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
             return simd_length(pa - ba * h) - f.r
+        case .clippedCapsule:
+            let pa = p - f.a, ba = f.b - f.a
+            let t = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
+            var d = simd_length(pa - ba * t) - f.r
+            if let start = f.startClip { d = max(d, start.distance(p)) }
+            if let end = f.endClip { d = max(d, end.distance(p)) }
+            return d
         case .sphere:
             return simd_distance(p, f.a) - f.r
         case .cylinder:

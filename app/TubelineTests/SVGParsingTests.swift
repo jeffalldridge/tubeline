@@ -103,4 +103,48 @@ final class SVGParsingTests: XCTestCase {
         let dashes = Dasher.split(square, pattern: [6, 2], offset: 3)
         XCTAssertEqual(dashes.count, 2)
     }
+    func testCollinearCubicBacktrackingIsPreserved() {
+        let path = PathDataParser.parse("M0 0 C100 0 -100 0 1 0", tolerance: 0.005)
+        let xs = path[0].points.map(\.x)
+        XCTAssertGreaterThan(xs.max() ?? 0, 28)
+        XCTAssertLessThan(xs.min() ?? 0, -28)
+        XCTAssertEqual(path[0].points.last, Vec2(1, 0))
+    }
+
+    func testUnsupportedAppearanceFeaturesProduceWarnings() throws {
+        let d = try doc("<defs><clipPath id='c'><rect width='6' height='24'/></clipPath></defs><path d='M0 12h24' clip-path='url(#c)' transform='scale(4 1)'/>")
+        XCTAssertTrue(d.skipped.contains { $0.contains("clip-path") })
+        XCTAssertTrue(d.skipped.contains { $0.contains("Nonuniform") })
+        let css = try doc("<defs><style>.clipped{clip-path:url(#c);}</style></defs><path class='clipped' d='M0 0h24'/>")
+        XCTAssertTrue(css.skipped.contains { $0.contains("clip-path") })
+    }
+
+    func testPhysicalUnitsResolveWithAndWithoutAViewBox() throws {
+        for dimension in ["1in", "72pt", "96px"] {
+            let d = try doc("<path d='M0 0h1'/>", root: "width='\(dimension)' height='\(dimension)' stroke='black'")
+            XCTAssertEqual(d.canvas?.size.x ?? 0, 96, accuracy: 1e-9)
+            XCTAssertEqual(d.physicalPointsPerUnit, 0.75, accuracy: 1e-9)
+            let framed = try doc("<path d='M0 0h1'/>", root: "width='\(dimension)' height='\(dimension)' viewBox='0 0 72 72' stroke='black'")
+            XCTAssertEqual(framed.physicalPointsPerUnit, 1, accuracy: 1e-9)
+        }
+    }
+
+    func testPhysicalShapeAndStrokeLengthsUseCSSUserUnits() throws {
+        let d = try doc("<line x1='-1pt' y1='0' x2='1in' y2='0' stroke-width='1pt' stroke-dasharray='3pt 2px'/>")
+        XCTAssertEqual(d.strokes[0].width, 4.0 / 3, accuracy: 1e-9)
+        XCTAssertEqual(d.strokes[0].points.first?.x ?? 0, -4.0 / 3, accuracy: 1e-9)
+        XCTAssertEqual(d.strokes[0].points.last?.x ?? 0, 8.0 / 3, accuracy: 1e-9)
+    }
+
+    func testUnsupportedRelativeLengthsWarn() throws {
+        let d = try doc("<rect width='50%' height='2em'/>")
+        XCTAssertTrue(d.skipped.contains { $0.contains("width length") })
+        XCTAssertTrue(d.skipped.contains { $0.contains("height length") })
+    }
+
+    func testNonfinitePathNumbersDoNotReachGeometry() throws {
+        let d = try doc("<path d='M1e999 0 L10 0'/>")
+        XCTAssertTrue(d.isEmpty)
+    }
+
 }

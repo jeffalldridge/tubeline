@@ -132,9 +132,13 @@ final class PathBuilder {
         if len < 1e-12 {
             return max(simd_distance(p1, p0), simd_distance(p2, p0)) < tolerance
         }
-        let nrm = Vec2(-chord.y, chord.x) / len
-        let d1 = abs(simd_dot(p1 - p0, nrm)), d2 = abs(simd_dot(p2 - p0, nrm))
-        return max(d1, d2) * 0.75 < tolerance
+        let u = chord / len
+        func distanceToChord(_ p: Vec2) -> Double {
+            let t = simd_clamp(simd_dot(p - p0, u), 0, len)
+            return simd_distance(p, p0 + u * t)
+        }
+        // The finite chord also detects collinear controls that reverse direction.
+        return max(distanceToChord(p1), distanceToChord(p2)) * 0.75 < tolerance
     }
 
     private func flush(closed: Bool) {
@@ -285,7 +289,11 @@ enum PathDataParser {
                     i = j
                 }
             }
-            return Double(String(decoding: c[start..<i], as: UTF8.self))
+            // Arc construction contains fourth-order products. Bound accepted SVG numbers
+            // well beyond useful artwork sizes before those intermediates can overflow.
+            guard let value = Double(String(decoding: c[start..<i], as: UTF8.self)),
+                  value.isFinite, abs(value) <= 1e12 else { return nil }
+            return value
         }
     }
 }
