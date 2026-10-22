@@ -6,12 +6,16 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ### Fixed
 
+- Invalid numeric edits show field-specific guidance without changing applied settings. Saved defaults reject invalid values, and untouched fields preserve calibration precision.
+- Preview accessibility reports unavailable content accurately and identifies same-name icons by source folder and path.
 - Concurrent CLI exports publish without replacing another process's file. A late preview-image collision preserves the existing PNG and reports partial success.
 - Removing a completed or failed row no longer cancels the remaining batch.
 - Automatic export queues SVGs added or refreshed during an active batch, uses current settings when each request starts, and clears queued requests on Cancel.
 
 ### Changed
 
+- View menu commands provide camera controls and discrete orbit actions. Export cancellation supports Escape and Command-period, and icon removal is available from the menu and list keyboard handling.
+- The window supports a smaller minimum size, long destination names have bounded width, and single-icon exports avoid a redundant selected-item button. Camera inertia respects Reduce Motion.
 - Detail and Optimize Mesh appear first in the main settings panel, with Low, Balanced, and High detail presets. Intersection blending and fill depth are exposed in their regular sections; only unit calibration remains collapsed.
 - App Settings directly edits saved defaults for mesh detail, optimization, thickness, and output scale without changing an active batch.
 

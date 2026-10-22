@@ -40,6 +40,8 @@ Commit `829e1a9` fixes a reproduced concurrent CLI race: both processes could re
 
 The settings hierarchy now starts with Detail and Optimize Mesh. Low, Balanced, and High presets use detail targets of 16, 32, and 64. Fill controls and intersection blending are exposed; only unit calibration stays collapsed. App Settings directly edits persistent startup detail, optimization, thickness, and output scale. The full app suite passed sixty-two tests, including startup preference persistence and separation from active batch settings. Native checks confirmed the main hierarchy, preferences window, and a heart changing from 2,228 to 8,038 to 29,022 triangles across the three presets. Saved user defaults were left unchanged during native checks.
 
+The final [UI and HIG audit](research/2026-10-22-ui-ux-hig-audit.md) adds validated numeric drafts, saved-default guards, View menu camera/orbit commands, standard cancellation commands, clearer accessibility labels, and Reduce Motion handling. Sixty-nine integrated app tests pass. Native checks verified invalid-input feedback, orbit and Front, keyboard export, and text deletion preserving the icon. Actual VoiceOver, Full Keyboard Access, contrast, enlarged text, and minimum-window-size acceptance remain open in the audit.
+
 ## Continue Development
 
 Work after the tag is on `codex/mesh-optimization`. Do not alter or move the published tag. Priorities:
