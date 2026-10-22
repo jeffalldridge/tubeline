@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%C2%B7%20Apple%20silicon-lightgrey)
 
-A free little Mac utility that turns stroked SVG icons into 3D tube models (USDZ) you can drop into Apple Motion.
+A free little Mac utility that turns stroked SVG icons into 3D tube models (USDZ) for motion graphics apps — Apple Motion and any other tool that imports USDZ.
 
 Drag a pile of SVGs (or folders) onto the window. Every stroke becomes a round tube, as thick as the stroke, and the result is saved as a `.usdz` next to the original or in a folder you choose. A live 3D preview shows exactly what will be exported, with triangle count and real-world size.
 

@@ -4,7 +4,8 @@ import TubelineCore
 let usage = """
 usage: tubeline [options] <file.svg | folder> ...
 
-Turns stroked SVG icons into 3D tube models (.usdz) for Apple Motion.
+Turns stroked SVG icons into 3D tube models (.usdz) for motion graphics apps
+such as Apple Motion, or anything else that imports USDZ.
 
 options:
   -o, --output <dir>      Write results here (default: next to each SVG)

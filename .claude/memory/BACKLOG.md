@@ -4,10 +4,11 @@
 - [x] Phase 3: QEM decimation + exact normals + speed pass (2026-10-22)
 - [ ] Jeff: test exported icons in Motion (Phase 2) — the next real unknown
 
-## Phase 2 — Motion validation (Jeff)
+## Phase 2 — Validation in motion apps (Jeff) — Apple Motion first
 - [ ] Import samples into Motion: does 1 pt = 1/72 in give a sensible size?
 - [ ] Does Solid Color (emissive) render flat in Motion? Does Shaded pick up lights?
 - [ ] Performance with dozens of icons in one project
+- [ ] Spot-check other USDZ importers (e.g. Reality Composer Pro, Keynote, Blender) for scale/material
 - [ ] Run Jeff's own icon sets (Samples/User) and log failures
 
 ## Geometry

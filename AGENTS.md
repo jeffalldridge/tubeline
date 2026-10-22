@@ -7,7 +7,8 @@ Single source of truth for AI sessions in this repo. `CLAUDE.md` points here.
 - **Product:** Tubeline (codename until Phase 5 name research)
 - **Publisher:** Tent Studios, LLC (Jeff Alldridge) — team `ACL5A8Y9U7`
 - **What it is:** A native macOS utility that turns stroked SVG icons into 3D
-  tube models (USDZ) for Apple Motion. Drop SVGs, get `.usdz` files with a live
+  tube models (USDZ) for motion graphics apps — Apple Motion first, and any
+  other app that imports USDZ. Drop SVGs, get `.usdz` files with a live
   3D preview. Every stroke becomes a round tube; intersections fuse cleanly.
 - **What it is NOT:** A 3D modeler, a renderer, or a general SVG-to-3D
   extruder. No textures, UVs, lights or cameras in the output.
@@ -86,7 +87,7 @@ swift run -c release tubeline Samples -o /tmp/out --png
 |---|---|---|
 | 0 | Scaffold: engine, CLI, app shell, tests, house layout | Done 2026-10-22 |
 | 1 | Core MVP: drop → preview → export, all edge cases (caps, dashes, fills, extrusion) | Done 2026-10-22 |
-| 2 | **Empirical Motion validation** — import into Motion: scale, Solid Color material, normals, performance with many icons | Open |
+| 2 | **Empirical validation in motion apps** — import into Apple Motion first, then other USDZ importers: scale, Solid Color material, normals, performance with many icons | Open |
 | 3 | Geometry optimization: QEM decimation, faster meshing (docs/research/2026-10-22-claude-mesh-optimization.md) | Core done 2026-10-22; manifold DC + welded USD normals open |
 | 4 | Polish: app icon, a11y, HIG audit, Settings window, user icon test pass | |
 | 5 | Ship: name research, notarized build, site/README screenshots | |

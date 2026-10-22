@@ -1,7 +1,7 @@
 # Contributing to Tubeline
 
 Thanks for helping. Tubeline is small on purpose: one job (stroked SVG → clean 3D tubes for
-Apple Motion), native frameworks, no third-party dependencies.
+motion graphics apps like Apple Motion), native frameworks, no third-party dependencies.
 
 ## Reporting a bad conversion
 

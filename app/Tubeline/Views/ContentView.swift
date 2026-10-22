@@ -109,7 +109,7 @@ struct DropPrompt: View {
                 .accessibilityHidden(true)
             Text("Drop SVG icons or folders here")
                 .font(.title2.weight(.medium))
-            Text("Stroked paths become 3D tubes, saved as USDZ for Apple Motion.")
+            Text("Stroked paths become 3D tubes, saved as USDZ for Apple Motion and other motion graphics apps.")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -15,7 +15,7 @@ struct SettingsPanel: View {
                               format: { "\(Int($0))" },
                               help: "How many flat sides go around each tube. More is smoother and heavier; shading stays round either way.")
                 Toggle("Optimize mesh", isOn: $model.options.optimize)
-                    .help("Collapses straight runs and flat faces into large triangles while staying within one facet of the exact shape. Much lighter in Motion.")
+                    .help("Collapses straight runs and flat faces into large triangles while staying within one facet of the exact shape. Much lighter to animate.")
                 Picker("Ends", selection: $model.options.caps) {
                     Text("From SVG").tag(ConversionOptions.Caps.svg)
                     Text("Round").tag(ConversionOptions.Caps.round)
