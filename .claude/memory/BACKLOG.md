@@ -1,31 +1,33 @@
-# Tubeline — Backlog
+# Tubeline Backlog
 
-Public roadmap: ROADMAP.md + GitHub issues labeled `roadmap` (#2–#7). Keep both in sync.
+The public roadmap is ROADMAP.md plus GitHub issues labeled `roadmap` (issues #2–#7). Keep them in sync with this list.
 
-## NEXT SESSION FIRST
-- [x] Phase 3: QEM decimation + exact normals + speed pass (2026-10-22)
-- [ ] Jeff: test exported icons in Motion (Phase 2) — the next real unknown (#3)
-- [ ] GLB export for After Effects, USDZ stays default (#2) — v0.2 headline
+## Next Session First
 
-## Phase 2 — Validation in motion apps (Jeff) — Apple Motion first
-- [ ] Import samples into Motion: does 1 pt = 1/72 in give a sensible size?
-- [ ] Does Solid Color (emissive) render flat in Motion? Does Shaded pick up lights?
-- [ ] Performance with dozens of icons in one project
-- [ ] Spot-check other USDZ importers (e.g. Reality Composer Pro, Keynote, Blender) for scale/material
-- [ ] Run Jeff's own icon sets (Samples/User) and log failures
+- [ ] Jeff tests exported icons in Motion (issue #3). This is the biggest open question.
+- [ ] GLB export for After Effects, with USDZ staying the default (issue #2). This is the 0.2 headline.
+
+## Testing in Motion Graphics Apps (Issue #3)
+
+- [ ] Does point-based sizing (1 pt = 1/72 inch) give a sensible size in Motion?
+- [ ] Does Solid Color render flat in Motion, and does Shaded respond to lights?
+- [ ] How does performance hold up with dozens of icons in one project?
+- [ ] Spot-check other apps that import USDZ, such as Reality Composer Pro, Keynote, and Blender.
+- [ ] Run Jeff's own icon sets from `Samples/User` and log any failures.
 
 ## Geometry
-- [ ] Manifold dual contouring: crossing saddles produce a few pinch edges shared by
-      4 triangles (closed, not a hole; invisible) — ~5% of edges on an X crossing a circle. Fix = multiple vertices per cell
-      (Schaefer et al. 2007) or post-split of non-manifold edges.
-- [ ] Welded points + faceVarying indexed primvars:normals in USD
-- [ ] Miter/bevel joins (currently always round)
-- [ ] `<use>`/`<symbol>` support; warn on `<text>` (already reported)
-- [ ] Optional crisp low-poly mode (analytic sweeps + Manifold)
 
-## Polish / ship
-- [x] Original icon glyph (loop-the-loop, rendered by Tubeline) replaced the SF Symbol (2026-10-22)
-- [ ] Add release signing secrets to the repo so tags release from CI (see release.yml)
-- [x] Icon Composer icon + icns-strip postBuild script wired up (2026-10-22)
-- [ ] Settings window, keyboard shortcuts, a11y labels, swiftui-pro review
-- [ ] Name research (Phase 5)
+- [ ] Manifold dual contouring (issue #4). Where strokes cross, a few edges are shared by four triangles. The mesh is still closed and the effect is invisible, but on an X crossing a circle it affects about 5 percent of edges. Fix it with several vertices per cell (Schaefer, Ju, and Warren 2007) or by splitting non-manifold edges after contouring.
+- [ ] Miter and bevel joins (issue #5); corners are always round today.
+- [ ] Support `<use>` and `<symbol>` (issue #6).
+- [ ] An optional crisp low-poly mode with analytic sweeps (issue #7).
+- [ ] Welded points with face-varying normals in USD.
+
+## Polish and Shipping
+
+- [x] Original icon glyph rendered by Tubeline replaced the SF Symbol (October 22, 2026).
+- [x] Notarized 0.1.0 release with DMG, CLI, and checksums (October 22, 2026).
+- [ ] Add release signing secrets to the repository so tags can release from CI.
+- [ ] Merge or close Dependabot's `actions/checkout` update (pull request #1).
+- [ ] Settings window, keyboard shortcuts, accessibility labels, and a swiftui-pro review.
+- [ ] Trademark check for the name.

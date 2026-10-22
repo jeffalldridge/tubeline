@@ -37,7 +37,7 @@ struct ContentView: View {
                 Button { model.add(Panels.chooseSVGs()) } label: { Label("Add SVGs", systemImage: "plus") }
                 Button { model.exportAll() } label: { Label("Export All", systemImage: "square.and.arrow.up.on.square") }
                     .disabled(model.jobs.isEmpty)
-                    .help("Export every icon in the list with the current settings")
+                    .help("Exports every icon in the list with the current settings.")
             }
         }
     }
@@ -58,7 +58,7 @@ struct ContentView: View {
                         .labelsHidden()
                         .fixedSize()
                         .padding(12)
-                        .help("Show Form lights the model so you can judge its shape. It does not change the exported file.")
+                        .help("Show Form lights the model so you can judge its shape. It doesn't change the exported file.")
                     }
                 if model.previewBusy && model.previewURL == nil { ProgressView() }
                 if let err = model.previewError {
@@ -182,8 +182,8 @@ struct JobRow: View {
         switch job.status {
         case .pending: return "Not exported"
         case .working: return "Converting…"
-        case .exported: return job.stats.map { "\($0.triangles.formatted()) tris" } ?? "Exported"
-        case .outdated: return "Settings changed — export again"
+        case .exported: return job.stats.map { "\($0.triangles.formatted()) triangles" } ?? "Exported"
+        case .outdated: return "Settings changed. Export again."
         case .failed(let msg): return msg
         }
     }

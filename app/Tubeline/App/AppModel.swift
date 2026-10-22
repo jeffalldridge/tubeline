@@ -64,7 +64,7 @@ final class AppModel {
 
     func add(_ urls: [URL]) {
         let known = Set(jobs.map(\.source))
-        let new = SVGFinder.collect(urls).filter { !known.contains($0) }.map(Job.init)
+        let new = SVGFinder.collect(urls).filter { !known.contains($0) }.map { Job(source: $0) }
         guard !new.isEmpty else { return }
         jobs += new
         if selection == nil || selectedJob == nil { select(new[0].id) }
@@ -101,7 +101,7 @@ final class AppModel {
         // The sandbox only lets us write where the user has granted access; ask once per folder.
         let denied = Set(folderAccess.ensureWritable(pairs.map { $0.1.deletingLastPathComponent() }))
         for (job, out) in pairs where denied.contains(out.deletingLastPathComponent().standardizedFileURL) {
-            job.status = .failed("No permission to save in “\(out.deletingLastPathComponent().lastPathComponent)”")
+            job.status = .failed("Tubeline doesn’t have permission to save in “\(out.deletingLastPathComponent().lastPathComponent)”.")
         }
         pairs.removeAll { denied.contains($0.1.deletingLastPathComponent().standardizedFileURL) }
         for (job, _) in pairs { job.status = .working }

@@ -4,93 +4,86 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%C2%B7%20Apple%20silicon-lightgrey)
 
-A free little Mac utility that turns stroked SVG icons into 3D tube models (USDZ) for motion graphics apps — Apple Motion and any other tool that imports USDZ.
+Tubeline is a free Mac app that turns stroked SVG icons into 3D tube models. It saves them as USDZ files for Apple Motion and other motion graphics apps that import USDZ.
 
-Drag a pile of SVGs (or folders) onto the window. Every stroke becomes a round tube, as thick as the stroke, and the result is saved as a `.usdz` next to the original or in a folder you choose. A live 3D preview shows exactly what will be exported, with triangle count and real-world size.
+Drop SVG files or folders onto the window. Each stroke becomes a round tube as thick as the stroke, and the model is saved next to the original or in a folder you choose. A 3D preview shows exactly what will be exported, along with its triangle count and real-world size.
 
 ## Download
 
-Get the latest notarized build from **[Releases](https://github.com/jeffalldridge/tubeline/releases/latest)**: open the DMG and drag Tubeline to Applications. Requires an Apple silicon Mac with macOS 14 or later. A notarized `tubeline` command-line tool is attached to each release too.
+Download the latest build from [Releases](https://github.com/jeffalldridge/tubeline/releases/latest), open the DMG, and drag Tubeline to your Applications folder. You need an Apple silicon Mac running macOS 14 or later. Each release also includes a `tubeline` command-line tool. Both are signed by Tent Studios and notarized by Apple.
 
-## How it turns lines into solids
+## How It Works
 
-Tubeline does not sweep separate tubes and stitch them together. It describes the whole icon as one solid (a signed distance field built from every stroke, cap, joint and fill) and extracts a single watertight surface from it with dual contouring. That's why the awkward cases come out clean.
+Tubeline doesn't build each tube separately and stitch them together. It models the whole icon as a single solid, using a signed distance field built from every stroke, cap, joint, and fill, and then extracts one closed surface from it with dual contouring. That's why overlaps and crossings come out clean.
 
-The dense surface is then simplified with quadric edge collapses, each one checked against the exact shape, so long straight runs and flat faces become a few large triangles while curves and seams keep their detail. A typical 24 pt line icon comes out around 5–10k triangles, ready to animate by the dozen.
+It then simplifies the surface by collapsing edges, checking each change against the exact shape. Long straight runs and flat faces end up as a few large triangles, while curves and seams keep their detail. A typical 24 pt line icon comes out at 5,000–10,000 triangles, light enough to animate dozens at a time.
 
-| Artwork | Result |
+| In the SVG | In the model |
 | --- | --- |
-| Lines that cross or overlap | Fused into one surface. **Crisp** keeps a sharp seam; **Soft**/**Round** add a fillet. |
-| `stroke-linecap` butt / round / square | Flat end at the point / half-sphere / flat end extended by half the width. |
-| `stroke-linejoin` (any) | Corners are rounded, like a tube bent around them. |
-| `stroke-dasharray`, `stroke-dashoffset` | Each dash is its own tube with the path's caps. Zero-length dashes with round caps become dots. |
-| Closed shape with outline **and** fill | A solid disc whose rim matches the outline tube (no torus). |
-| Fill with no outline (e.g. outlined text) | Extruded to a depth you choose, with optional edge rounding, or a rounded "pillow". |
-| Implicit black fill (no `fill` attribute) | Ignored. Only fills the file declares count, so line icons don't turn into blobs. |
+| Lines that cross or overlap | One fused surface. Crisp keeps a sharp seam; Soft and Round add a fillet. |
+| `stroke-linecap`: butt, round, square | A flat end at the endpoint, a half sphere, or a flat end extended by half the stroke width |
+| `stroke-linejoin` (any value) | A rounded corner, as if the tube were bent |
+| `stroke-dasharray` and `stroke-dashoffset` | A separate tube for each dash, with the path's caps. Zero-length dashes with round caps become dots. |
+| A closed shape with both an outline and a fill | A solid disc whose edge matches the outline tube |
+| A fill with no outline (e.g., outlined text) | An extrusion at the depth you choose, with optional rounded edges, or a rounded slab |
+| A shape with no `fill` attribute | No fill. SVG's default black fill is ignored so line icons don't turn into solid blobs. |
 
-Also supported: `path` (all commands, arcs included), `line`, `polyline`, `polygon`, `rect` (rounded), `circle`, `ellipse`, groups, nested `transform`s, inline `style`, simple CSS class rules (Illustrator exports), `display="none"`. `<text>`, `<image>` and `<use>` are skipped and reported. Convert text to outlines first.
+Tubeline also reads every `path` command (including arcs), `line`, `polyline`, `polygon`, `rect` (with rounded corners), `circle`, `ellipse`, groups, nested transforms, inline styles, simple CSS class rules like those Illustrator exports, and `display="none"`. It skips `<text>`, `<image>`, and `<use>` and tells you when it does; convert text to outlines before importing.
 
 ## Settings
 
-- **Thickness**: tube diameter as a multiple of the stroke width.
-- **Facets**: how many sides go around each tube (default 32). Normals come from the exact surface, so tubes shade round even when light. The preview shows the triangle count.
-- **Optimize mesh**: on by default; turn off to keep the dense grid mesh.
-- **Ends**: use the SVG's caps, or force round or flat.
-- **Intersections**: Crisp, Soft or Round, plus a blend slider.
-- **Filled shapes**: include or ignore; extrusion depth (pt) and edge rounding for fill-only shapes.
-- **Surface**: *Solid Color* (self-lit flat color that ignores scene lights) or *Shaded* (matte, responds to lights). Pick the color.
-- **Scale**: *From Points* (default) maps artwork points to real size, 1 pt = 0.3528 mm (1/72 in). *Fixed Size* scales the frame's longest side to N cm.
-- **Frame**: center on the SVG canvas (keeps a set of icons aligned) or on the artwork.
+- **Thickness:** tube diameter as a multiple of the stroke width.
+- **Facets:** the number of sides around each tube (default 32). Shading uses normals from the exact surface, so tubes look round even with fewer facets. The preview shows the triangle count as you adjust it.
+- **Optimize Mesh:** simplifies the model (on by default). Turn it off to keep the dense mesh.
+- **Ends:** the SVG's own line caps, or always round or always flat.
+- **Intersections:** Crisp, Soft, or Round, with a slider to fine-tune the blend.
+- **Filled Shapes:** include or ignore fills, and set the extrusion depth (in points) and edge rounding for shapes that have no outline.
+- **Surface:** Solid Color, a flat color that ignores scene lighting, or Shaded, a matte finish that responds to lights. Either can be any color.
+- **Scale:** From Points (the default) treats one artwork point as 1/72 inch (0.3528 mm). Fixed Size scales the longest side to a length you set in centimeters.
+- **Frame:** center the model on the SVG canvas, which keeps a set of icons aligned, or on the artwork itself.
 
-The output is a single mesh with smooth normals and one `UsdPreviewSurface` material, Y-up, centimeters (`metersPerUnit = 0.01`), with no lights or cameras. Files pass Apple's `usdchecker`.
+Each file contains a single mesh with smooth normals and one `UsdPreviewSurface` material. Models are Y-up and measured in centimeters (`metersPerUnit = 0.01`), with no lights or cameras, and they pass Apple's `usdchecker`.
 
-## Building
+## Building from Source
 
-Requires an Apple silicon Mac with macOS 14+, Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-(`brew install xcodegen`). The Xcode project is generated, not committed.
+You need an Apple silicon Mac with macOS 14 or later, Xcode 16 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). The Xcode project is generated from `app/project.yml` and isn't checked in.
 
 ```bash
 cd app
 xcodegen generate
-open Tubeline.xcodeproj          # run the Tubeline scheme; ⌘U runs the tests
+open Tubeline.xcodeproj          # Run the Tubeline scheme; ⌘U runs the tests.
 ```
 
-The geometry engine is the `TubelineCore` Swift package at the repo root, shared
-by the app and a command-line tool:
+The geometry engine is the `TubelineCore` Swift package at the root of the repository. The app and the command-line tool both use it:
 
 ```bash
 swift run -c release tubeline Samples -o /tmp/tubeline --png
 swift run tubeline --help
 ```
 
-`Samples/` holds hand-made test SVGs covering the edge cases. Put your own icons
-in `Samples/User/` (gitignored).
+The `Samples` folder holds test SVGs that cover the edge cases. Put your own icons in `Samples/User`, which Git ignores.
 
-### Releasing a notarized build
+To make a notarized release, run `scripts/release.sh --publish`. It runs the tests, builds and signs the app with a Developer ID certificate, notarizes and staples the app and the DMG, notarizes the command-line tool, and creates the GitHub release. See [Releasing Tubeline](docs/release/RELEASING.md) for details.
 
-`scripts/release.sh --publish` tests, archives, signs with Developer ID, notarizes and
-staples the app and DMG, notarizes the CLI, and creates the GitHub Release. See
-[docs/release/RELEASING.md](docs/release/RELEASING.md).
-
-## Layout
+## Repository Layout
 
 ```
-Package.swift           TubelineCore engine + tubeline CLI
-Sources/TubelineCore/   SVG parsing, dashing, distance-field meshing, USDZ writing, preview scene
+Package.swift           TubelineCore engine and tubeline command-line tool
+Sources/TubelineCore/   SVG parsing, dashes, meshing, USDZ writing, preview scene
 Sources/tubeline/       Command-line tool
-app/                    Xcode app (project.yml), sandboxed SwiftUI app, unit tests
-Samples/                Test SVGs (Samples/User/ is yours, gitignored)
-docs/                   Research, release and testing notes
+app/                    Mac app (project.yml, SwiftUI sources, unit tests)
+Samples/                Test SVGs (Samples/User is yours and ignored by Git)
+docs/                   Research, release, and testing notes
 ```
 
 ## Roadmap
 
-Next up: **GLB export** for After Effects and other apps, with USDZ staying the default. See [ROADMAP.md](ROADMAP.md) for what's now, next and later.
+GLB export for After Effects and other apps is next, and USDZ will stay the default. See the [roadmap](ROADMAP.md) for what's planned.
 
 ## Contributing
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). An SVG that converts badly is the most useful bug report you can file.
+Bug reports and pull requests are welcome; see [Contributing to Tubeline](CONTRIBUTING.md). The most helpful bug report is an SVG that doesn't convert the way you expected.
 
 ## License
 
-MIT © Tent Studios, LLC. Made by Jeff Alldridge.
+MIT License. Copyright © 2026 Tent Studios, LLC. Made by Jeff Alldridge.

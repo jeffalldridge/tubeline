@@ -10,12 +10,12 @@ struct SettingsPanel: View {
             Section("Tube") {
                 LabeledSlider(title: "Thickness", value: $model.options.thickness, range: 0.25...3, step: 0.05,
                               format: { String(format: "%.2f×", $0) },
-                              help: "Tube diameter as a multiple of the SVG stroke width")
+                              help: "Sets the tube diameter as a multiple of the SVG stroke width.")
                 LabeledSlider(title: "Facets", value: $model.options.facets, range: 12...96, step: 2,
                               format: { "\(Int($0))" },
-                              help: "How many flat sides go around each tube. More is smoother and heavier; shading stays round either way.")
+                              help: "Sets how many flat sides go around each tube. More sides look smoother but make heavier models; shading stays round either way.")
                 Toggle("Optimize mesh", isOn: $model.options.optimize)
-                    .help("Collapses straight runs and flat faces into large triangles while staying within one facet of the exact shape. Much lighter to animate.")
+                    .help("Simplifies straight runs and flat faces into a few large triangles while staying true to the shape. Models are much lighter to animate.")
                 Picker("Ends", selection: $model.options.caps) {
                     Text("From SVG").tag(ConversionOptions.Caps.svg)
                     Text("Round").tag(ConversionOptions.Caps.round)
@@ -33,20 +33,20 @@ struct SettingsPanel: View {
                 .pickerStyle(.segmented)
                 LabeledSlider(title: "Blend", value: $model.options.fillet, range: 0...1, step: 0.05,
                               format: { $0 == 0 ? "None" : String(format: "%.2f", $0) },
-                              help: "Fillet radius where separate strokes meet, as a fraction of the tube radius")
+                              help: "Rounds the joint where separate strokes meet. The value is a fraction of the tube radius.")
             } header: {
                 Text("Where Shapes Meet")
             }
 
             Section("Filled Shapes") {
                 Toggle("Include fills", isOn: $model.options.includeFills)
-                    .help("Filled shapes with an outline become solid discs as thick as the outline")
+                    .help("Turns filled shapes into solids. A filled shape with an outline becomes a disc as thick as the outline.")
                 if model.options.includeFills {
                     Picker("Without outline", selection: $model.options.fillStyle) {
                         Text("Extrude").tag(ConversionOptions.FillStyle.extruded)
                         Text("Rounded").tag(ConversionOptions.FillStyle.rounded)
                     }
-                    .help("Solid artwork such as outlined text: a straight extrusion, or a pillow as thick as the icon's strokes")
+                    .help("Shapes filled without an outline, such as outlined text, can be extruded straight or rounded like a pillow as thick as the icon's strokes.")
                     if model.options.fillStyle == .extruded {
                         HStack {
                             Text("Depth")
@@ -58,7 +58,7 @@ struct SettingsPanel: View {
                         }
                         LabeledSlider(title: "Edge rounding", value: $model.options.extrudeRounding, range: 0...1, step: 0.05,
                                       format: { $0 == 0 ? "Sharp" : String(format: "%.2f", $0) },
-                                      help: "Rounds the front and back edges of extrusions")
+                                      help: "Rounds the front and back edges of extruded shapes.")
                     }
                 }
             }
@@ -69,7 +69,7 @@ struct SettingsPanel: View {
                     Text("Shaded").tag(ConversionOptions.Surface.shaded)
                 }
                 .pickerStyle(.segmented)
-                .help("Solid Color ignores scene lights; Shaded responds to them")
+                .help("Solid Color shows a flat color that ignores scene lighting. Shaded responds to lights.")
                 ColorPicker("Color", selection: colorBinding, supportsOpacity: false)
             }
 
@@ -78,7 +78,7 @@ struct SettingsPanel: View {
                     Text("SVG Canvas").tag(ConversionOptions.Framing.canvas)
                     Text("Artwork").tag(ConversionOptions.Framing.content)
                 }
-                .help("What the model is centered on (and, for Fixed Size, what is scaled): the SVG canvas keeps a set of icons aligned, Artwork uses the drawing itself")
+                .help("Centers the model on the SVG canvas, which keeps a set of icons aligned, or on the artwork itself. With Fixed Size, this is also the area that gets scaled.")
                 Picker("Scale", selection: $model.options.sizing) {
                     Text("From Points").tag(ConversionOptions.Sizing.points)
                     Text("Fixed Size").tag(ConversionOptions.Sizing.fixed)
@@ -93,7 +93,7 @@ struct SettingsPanel: View {
                             .frame(width: 70)
                         Text("mm").foregroundStyle(.secondary)
                     }
-                    .help("Physical size of one artwork point. Print standard is 0.3528 mm (1/72 inch).")
+                    .help("Sets the real-world size of one artwork point. The print standard is 0.3528 mm (1/72 inch).")
                 } else {
                     HStack {
                         Text("Longest side")

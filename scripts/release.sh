@@ -121,7 +121,9 @@ mkdir -p "$CLI_DIR"
 cp "$(swift build -c release --arch arm64 --show-bin-path)/tubeline" "$CLI_DIR/tubeline"
 cp LICENSE "$CLI_DIR/"
 codesign --force --options runtime --timestamp --sign "$AUTHORITY" "$CLI_DIR/tubeline"
-"$CLI_DIR/tubeline" Samples/heart.svg -o "$OUT/cli-check" >/dev/null   # smoke test the shipped binary
+[[ "$("$CLI_DIR/tubeline" --version)" == "tubeline $VERSION" ]] \
+  || { echo "error: the CLI's version string doesn't match $VERSION (Sources/tubeline/main.swift)" >&2; exit 1; }
+"$CLI_DIR/tubeline" Samples/heart.svg -o "$OUT/cli-check" >/dev/null   # Smoke-test the shipped binary.
 CLI_ZIP="$OUT/tubeline-cli-$VERSION.zip"
 ditto -c -k --keepParent "$CLI_DIR" "$CLI_ZIP"
 xcrun notarytool submit "$CLI_ZIP" --keychain-profile "$PROFILE" --wait

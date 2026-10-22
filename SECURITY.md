@@ -1,13 +1,9 @@
 # Security Policy
 
-Tubeline runs locally, makes no network requests, and is sandboxed (it can only read files
-you drop or choose, and write where you allow). It parses untrusted SVG/XML files, so parser
-crashes and hangs count as security bugs.
+Tubeline runs entirely on your Mac. It never connects to the network, and the app is sandboxed, so it can read only the files you drop or choose and can write only where you allow. Because it parses SVG files from anywhere, a file that crashes or hangs the parser counts as a security bug.
 
-## Reporting a vulnerability
+## Reporting a Vulnerability
 
-Please **don't** open a public issue. Use GitHub's
-[private vulnerability reporting](https://github.com/jeffalldridge/tubeline/security/advisories/new)
-and include the file or steps that reproduce it. Expect a reply within a week.
+Please don't open a public issue. Instead, use GitHub's [private vulnerability reporting](https://github.com/jeffalldridge/tubeline/security/advisories/new) and include the file or steps that reproduce the problem. You can expect a reply within a week.
 
-Only the latest release is supported.
+Security fixes are made only to the latest release.

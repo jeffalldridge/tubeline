@@ -1,216 +1,9 @@
 import Foundation
 import simd
 
-public struct Mesh: Sendable {
-    public var positions: [SIMD3<Float>] = []
-    public var normals: [SIMD3<Float>] = []
-    public var indices: [UInt32] = []
-
-    public var triangleCount: Int { indices.count / 3 }
-
-    public var bounds: Box3 {
-        var b = Box3()
-        for p in positions { b.include(Vec3(Double(p.x), Double(p.y), Double(p.z))) }
-        return b
-    }
-}
-
-/// One solid piece of the icon in output space (z = 0 is the icon plane).
-enum Primitive {
-    /// Segment with round ends.
-    case capsule(Vec3, Vec3, Double)
-    /// Segment with flat ends.
-    case cylinder(Vec3, Vec3, Double)
-    case sphere(Vec3, Double)
-    /// Filled planar region, either rounded like an outline or straight-extruded.
-    case slab(SlabRegion)
-
-    var bounds: Box3 {
-        switch self {
-        case let .capsule(a, b, r), let .cylinder(a, b, r):
-            var box = Box3(); box.include(a); box.include(b)
-            return box.expanded(by: r)
-        case let .sphere(c, r):
-            return Box3(min: c - Vec3(repeating: r), max: c + Vec3(repeating: r))
-        case let .slab(s):
-            return s.bounds
-        }
-    }
-
-    func distance(_ p: Vec3) -> Double {
-        switch self {
-        case let .capsule(a, b, r):
-            let pa = p - a, ba = b - a
-            let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
-            return simd_length(pa - ba * h) - r
-        case let .cylinder(a, b, r):
-            // Exact capped-cylinder distance (Inigo Quilez).
-            let ba = b - a, pa = p - a
-            let baba = simd_dot(ba, ba), paba = simd_dot(pa, ba)
-            guard baba > 1e-30 else { return simd_length(pa) - r }
-            let x = simd_length(pa * baba - ba * paba) - r * baba
-            let y = abs(paba - baba * 0.5) - baba * 0.5
-            let x2 = x * x, y2 = y * y * baba
-            let d = max(x, y) < 0 ? -min(x2, y2) : ((x > 0 ? x2 : 0) + (y > 0 ? y2 : 0))
-            return (d < 0 ? -1 : 1) * sqrt(abs(d)) / baba
-        case let .sphere(c, r):
-            return simd_distance(p, c) - r
-        case let .slab(s):
-            return s.distance(planar: s.planarDistance(Vec2(p.x, p.y)), z: p.z)
-        }
-    }
-}
-
-final class SlabRegion {
-    enum Profile {
-        /// The area grown by a ball: flat faces with a fully rounded rim, as thick as an outline tube.
-        case rounded(radius: Double)
-        /// Straight extrusion of the area, with optionally rounded edges.
-        case extruded(halfDepth: Double, edgeRadius: Double)
-    }
-
-    let edges: [(Vec2, Vec2)]
-    let evenOdd: Bool
-    let profile: Profile
-    let bounds: Box3
-
-    init(contours: [[Vec2]], evenOdd: Bool, profile: Profile) {
-        var e: [(Vec2, Vec2)] = []
-        var b = Box3()
-        for c in contours where c.count >= 3 {
-            for i in 0..<c.count {
-                e.append((c[i], c[(i + 1) % c.count]))
-                b.include(Vec3(c[i].x, c[i].y, 0))
-            }
-        }
-        edges = e
-        self.evenOdd = evenOdd
-        self.profile = profile
-        switch profile {
-        case .rounded(let r):
-            bounds = b.expanded(by: r)
-        case .extruded(let hd, _):
-            b.min.z = -hd; b.max.z = hd
-            bounds = b
-        }
-    }
-
-    /// 3D distance given the signed planar distance (negative inside) and height above the plane.
-    func distance(planar d: Double, z: Double) -> Double {
-        switch profile {
-        case .rounded(let r):
-            let dxy = max(d, 0)
-            return (dxy * dxy + z * z).squareRoot() - r
-        case .extruded(let hd, let er):
-            let e = min(er, hd)
-            let w = Vec2(d + e, abs(z) - hd + e)
-            return min(max(w.x, w.y), 0) + simd_length(simd_max(w, .zero)) - e
-        }
-    }
-
-    // Acceleration: outline edges bucketed on a 2D grid (for distance) and by horizontal band
-    // (for the winding number). Distances only need to be exact within `band` of the outline;
-    // farther away a clamped value gives identical surfaces.
-    private var band = Double.infinity
-    private var cell = 1.0
-    private var origin = Vec2.zero
-    private var gx = 0, gy = 0
-    private var grid: [[Int32]] = []
-    private var rows: [[Int32]] = []
-
-    /// Builds the lookup grids. `band` must cover the slab's rounding plus the meshing margin.
-    func prepare(band: Double) {
-        guard !edges.isEmpty, band.isFinite, band > 0 else { return }
-        self.band = band
-        let lo = Vec2(bounds.min.x, bounds.min.y) - band, hi = Vec2(bounds.max.x, bounds.max.y) + band
-        cell = band
-        origin = lo
-        gx = max(1, Int(ceil((hi.x - lo.x) / cell)))
-        gy = max(1, Int(ceil((hi.y - lo.y) / cell)))
-        grid = [[Int32]](repeating: [], count: gx * gy)
-        rows = [[Int32]](repeating: [], count: gy)
-        for (e, (a, b)) in edges.enumerated() {
-            let i0 = cellX(min(a.x, b.x)), i1 = cellX(max(a.x, b.x))
-            let j0 = cellY(min(a.y, b.y)), j1 = cellY(max(a.y, b.y))
-            for j in j0...j1 {
-                rows[j].append(Int32(e))
-                for i in i0...i1 { grid[i + gx * j].append(Int32(e)) }
-            }
-        }
-    }
-
-    private func cellX(_ x: Double) -> Int { min(gx - 1, max(0, Int(floor((x - origin.x) / cell)))) }
-    private func cellY(_ y: Double) -> Int { min(gy - 1, max(0, Int(floor((y - origin.y) / cell)))) }
-
-    /// Signed distance from `p` to the filled area's outline in the plane (negative inside),
-    /// exact within `band` and clamped to ±band beyond it.
-    func planarDistance(_ p: Vec2) -> Double {
-        guard !grid.isEmpty else { return bruteForceDistance(p) }
-        let ci = Int(floor((p.x - origin.x) / cell)), cj = Int(floor((p.y - origin.y) / cell))
-        // Winding number from the edges crossing this point's horizontal band only.
-        var winding = 0
-        if cj >= 0 && cj < gy {
-            for e in rows[cj] { winding += crossing(edges[Int(e)], p) }
-        }
-        let inside = evenOdd ? (winding & 1) != 0 : winding != 0
-        var best = band * band
-        for j in max(0, cj - 1)...min(gy - 1, cj + 1) where cj + 1 >= 0 && cj - 1 < gy {
-            for i in max(0, ci - 1)...min(gx - 1, ci + 1) where ci + 1 >= 0 && ci - 1 < gx {
-                for e in grid[i + gx * j] {
-                    let (a, b) = edges[Int(e)]
-                    let ba = b - a, pa = p - a
-                    let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
-                    best = min(best, simd_length_squared(pa - ba * h))
-                }
-            }
-        }
-        let d = best.squareRoot()
-        return inside ? -d : d
-    }
-
-    private func bruteForceDistance(_ p: Vec2) -> Double {
-        var winding = 0
-        var best = Double.infinity
-        for edge in edges {
-            let (a, b) = edge
-            let ba = b - a, pa = p - a
-            let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
-            best = min(best, simd_length_squared(pa - ba * h))
-            winding += crossing(edge, p)
-        }
-        let inside = evenOdd ? (winding & 1) != 0 : winding != 0
-        return inside ? -best.squareRoot() : best.squareRoot()
-    }
-
-    /// Signed crossing of a ray from `p` towards +x (winding number contribution).
-    @inline(__always) private func crossing(_ edge: (Vec2, Vec2), _ p: Vec2) -> Int {
-        let (a, b) = edge
-        let ba = b - a, pa = p - a
-        if a.y <= p.y {
-            if b.y > p.y && cross(ba, pa) > 0 { return 1 }
-        } else if b.y <= p.y && cross(ba, pa) < 0 {
-            return -1
-        }
-        return 0
-    }
-
-    private func cross(_ u: Vec2, _ v: Vec2) -> Double { u.x * v.y - u.y * v.x }
-}
-
-/// A set of primitives whose union is one solid; fillets blend between groups only,
-/// so consecutive segments of the same line never bulge at their joints.
-struct PrimitiveGroup {
-    var primitives: [Primitive] = []
-    var bounds: Box3 {
-        var b = Box3()
-        for p in primitives { b.include(p.bounds) }
-        return b
-    }
-}
-
-/// Builds a single watertight mesh from the union of all groups by sampling a signed
-/// distance field on a grid and extracting the zero surface with naive surface nets,
-/// then snapping each vertex onto the exact analytic surface.
+/// Builds one closed mesh from the union of all groups: samples the signed distance on a grid,
+/// extracts the surface with dual contouring (vertices land on creases, so seams stay sharp),
+/// simplifies it against the exact surface, and shades it with exact normals.
 struct FusedMesher {
     var groups: [PrimitiveGroup]
     /// Grid spacing in output units.
@@ -220,20 +13,8 @@ struct FusedMesher {
     /// Maximum distance between the simplified mesh and the exact surface; 0 skips simplification.
     var tolerance: Double = 0
 
-    func smin(_ a: Double, _ b: Double) -> Double {
-        guard blend > 0 else { return min(a, b) }
-        let h = max(blend - abs(a - b), 0) / blend
-        return min(a, b) - h * h * blend * 0.25
-    }
-
     func build() -> Mesh {
-        var clock = Date()
-        func lap(_ name: String) {
-            if ProcessInfo.processInfo.environment["TL_PROFILE"] != nil {
-                print(String(format: "  %@: %.3fs", name, Date().timeIntervalSince(clock)))
-            }
-            clock = Date()
-        }
+        var profiler = Profiler()
         var total = Box3()
         for g in groups { total.include(g.bounds) }
         guard !total.isEmpty else { return Mesh() }
@@ -255,7 +36,6 @@ struct FusedMesher {
         let far = Float(1e9)
         var field = [Float](repeating: far, count: nx * ny * nz)
 
-
         // 1. Sample the exact distance on the grid, rows in parallel. The same lookup later snaps
         // vertices and checks simplification, so every stage sees one consistent surface.
         let lookup = SpatialLookup(groups: groups, cell: 2 * h, pad: pad + tolerance, blend: blend)
@@ -270,9 +50,9 @@ struct FusedMesher {
                 }
             }
         }
-        lap("sample \(nx)×\(ny)×\(nz)")
-        // 2. Surface nets: one vertex per cell that straddles the surface.
-        lap("lookup")
+        profiler.lap("sample \(nx)×\(ny)×\(nz) grid")
+
+        // 2. Dual contouring: one vertex per cell that straddles the surface.
         let cx = nx - 1, cy = ny - 1, cz = nz - 1
         var cellVertex = [Int32](repeating: -1, count: cx * cy * cz)
         var mesh = Mesh()
@@ -344,7 +124,8 @@ struct FusedMesher {
             }
         }
 
-        lap("dual contour")
+        profiler.lap("dual contouring")
+
         // 3. Faces: every grid edge that crosses the surface becomes a quad joining the 4 cells around it.
         func cellIndex(_ i: Int, _ j: Int, _ k: Int) -> Int32 {
             guard i >= 0, j >= 0, k >= 0, i < cx, j < cy, k < cz else { return -1 }
@@ -381,10 +162,12 @@ struct FusedMesher {
                 }
             }
         }
-        lap("faces \(mesh.triangleCount) tris")
+        profiler.lap("faces (\(mesh.triangleCount) triangles)")
+
+        // 4. Simplify and shade, then order for the GPU.
         if tolerance > 0 {
             mesh = simplify(mesh, creases: creases, lookup: lookup)
-            lap("simplify")
+            profiler.lap("simplify and shade (\(mesh.triangleCount) triangles)")
         } else {
             splitCreaseNormals(&mesh, creases: creases, lookup: lookup)
         }
@@ -404,16 +187,15 @@ struct FusedMesher {
         let crease = (0..<dense.positions.count).map { creases.contains($0) }
         let positions = dense.positions.map { Vec3($0) }
         let distance: (Vec3) -> Double = { lookup.distance($0) }
-        let profile = ProcessInfo.processInfo.environment["TL_PROFILE"] != nil
-        let t0 = Date()
+        var profiler = Profiler()
 
         // Pass 1: simplify tiles in parallel, with vertices on tile borders locked so neighbors
         // stay stitched. Pass 2 then simplifies the whole mesh, mostly just the seams.
         let (tp, tt, tc) = simplifyTiles(positions: positions, triangles: tris, crease: crease, distance: distance)
-        if profile { print(String(format: "  tiles: %.3fs → %d tris", Date().timeIntervalSince(t0), tt.count)) }
+        profiler.lap("  simplify tiles (\(tt.count) triangles)")
         var d = Decimator(positions: tp, triangles: tt, crease: tc, maxError: tolerance, distance: distance)
         d.run()
-        if profile { print(String(format: "  decimate: %.3fs", Date().timeIntervalSince(t0))) }
+        profiler.lap("  simplify seams")
         let (pos, out, _, _) = d.output()
 
         var mesh = Mesh()
@@ -563,161 +345,4 @@ func solveQEF(_ a: simd_double3x3, _ b: Vec3) -> Vec3 {
         inv[k][k] = 1 / eig[k]
     }
     return v * inv * v.transpose * b
-}
-
-/// Exact distance to the whole icon near a point, for snapping vertices and checking
-/// simplification. Data is flattened into plain arrays (no nested arrays, no class references
-/// on the hot path) because it is queried millions of times from many threads at once.
-struct SpatialLookup {
-    private struct Flat {
-        enum Kind: UInt8 { case capsule, cylinder, sphere, slab }
-        var kind: Kind
-        var group: Int32
-        var slab: Int32
-        var a: Vec3
-        var b: Vec3
-        var r: Double
-    }
-
-    private let prims: [Flat]
-    private let slabs: [SlabRegion]
-    private let slabRefs: [Unmanaged<SlabRegion>]
-    private let cell: Double
-    private let origin: Vec2
-    private let nx: Int, ny: Int
-    /// Bucket b holds bucketItems[bucketStart[b] ..< bucketStart[b + 1]], sorted by group.
-    private let bucketStart: [Int32]
-    private let bucketItems: [Int32]
-    private let blend: Double
-
-    init(groups: [PrimitiveGroup], cell: Double, pad: Double, blend: Double) {
-        self.cell = cell
-        self.blend = blend
-        var flat: [Flat] = []
-        var slabs: [SlabRegion] = []
-        var bounds: [Box3] = []
-        for (gi, g) in groups.enumerated() {
-            for p in g.primitives {
-                switch p {
-                case let .capsule(a, b, r): flat.append(Flat(kind: .capsule, group: Int32(gi), slab: -1, a: a, b: b, r: r))
-                case let .cylinder(a, b, r): flat.append(Flat(kind: .cylinder, group: Int32(gi), slab: -1, a: a, b: b, r: r))
-                case let .sphere(c, r): flat.append(Flat(kind: .sphere, group: Int32(gi), slab: -1, a: c, b: c, r: r))
-                case let .slab(s):
-                    flat.append(Flat(kind: .slab, group: Int32(gi), slab: Int32(slabs.count), a: .zero, b: .zero, r: 0))
-                    slabs.append(s)
-                }
-                bounds.append(p.bounds.expanded(by: pad))
-            }
-        }
-        prims = flat
-        self.slabs = slabs
-        slabRefs = slabs.map { Unmanaged.passUnretained($0) }
-
-        var total = Box3()
-        for g in groups { total.include(g.bounds) }
-        let o = Vec2(total.min.x, total.min.y) - Vec2(repeating: pad + cell)
-        origin = o
-        let nx = Int(ceil((total.size.x + 2 * (pad + cell)) / cell)) + 1
-        let ny = Int(ceil((total.size.y + 2 * (pad + cell)) / cell)) + 1
-        self.nx = nx
-        self.ny = ny
-
-        // Two passes: count per bucket, then fill (prims are already in group order).
-        var counts = [Int32](repeating: 0, count: nx * ny + 1)
-        func cells(_ b: Box3) -> (ClosedRange<Int>, ClosedRange<Int>)? {
-            let i0 = max(0, Int(floor((b.min.x - o.x) / cell))), i1 = min(nx - 1, Int(floor((b.max.x - o.x) / cell)))
-            let j0 = max(0, Int(floor((b.min.y - o.y) / cell))), j1 = min(ny - 1, Int(floor((b.max.y - o.y) / cell)))
-            return i0 <= i1 && j0 <= j1 ? (i0...i1, j0...j1) : nil
-        }
-        for b in bounds {
-            guard let (ri, rj) = cells(b) else { continue }
-            for j in rj { for i in ri { counts[i + nx * j + 1] += 1 } }
-        }
-        for k in 1..<counts.count { counts[k] += counts[k - 1] }
-        var items = [Int32](repeating: 0, count: Int(counts[counts.count - 1]))
-        var fill = counts
-        for (pi, b) in bounds.enumerated() {
-            guard let (ri, rj) = cells(b) else { continue }
-            for j in rj {
-                for i in ri {
-                    items[Int(fill[i + nx * j])] = Int32(pi)
-                    fill[i + nx * j] += 1
-                }
-            }
-        }
-        bucketStart = counts
-        bucketItems = items
-    }
-
-    @inline(__always) private func smin(_ a: Double, _ b: Double) -> Double {
-        guard blend > 0 else { return min(a, b) }
-        let h = max(blend - abs(a - b), 0) / blend
-        return min(a, b) - h * h * blend * 0.25
-    }
-
-    @inline(__always) private func distance(_ f: Flat, _ p: Vec3) -> Double {
-        switch f.kind {
-        case .capsule:
-            let pa = p - f.a, ba = f.b - f.a
-            let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
-            return simd_length(pa - ba * h) - f.r
-        case .sphere:
-            return simd_distance(p, f.a) - f.r
-        case .cylinder:
-            return Primitive.cylinder(f.a, f.b, f.r).distance(p)
-        case .slab:
-            return slabRefs[Int(f.slab)]._withUnsafeGuaranteedRef { s in
-                s.distance(planar: s.planarDistance(Vec2(p.x, p.y)), z: p.z)
-            }
-        }
-    }
-
-    func distance(_ p: Vec3) -> Double {
-        let i = Int(floor((p.x - origin.x) / cell)), j = Int(floor((p.y - origin.y) / cell))
-        guard i >= 0, j >= 0, i < nx, j < ny else { return 1e9 }
-        let b = i + nx * j
-        let lo = Int(bucketStart[b]), hi = Int(bucketStart[b + 1])
-        guard lo < hi else { return 1e9 }
-        return prims.withUnsafeBufferPointer { prims in
-            bucketItems.withUnsafeBufferPointer { items in
-                var result = Double.infinity
-                var groupMin = Double.infinity
-                var currentGroup: Int32 = -1
-                for k in lo..<hi {
-                    let f = prims[Int(items[k])]
-                    if f.group != currentGroup {
-                        if currentGroup >= 0 { result = result.isInfinite ? groupMin : smin(result, groupMin) }
-                        currentGroup = f.group
-                        groupMin = .infinity
-                    }
-                    groupMin = min(groupMin, distance(f, p))
-                }
-                result = result.isInfinite ? groupMin : smin(result, groupMin)
-                return result.isInfinite ? 1e9 : result
-            }
-        }
-    }
-
-    /// Point where the exact surface crosses the segment a→b (signs at the ends differ).
-    func edgeCrossing(_ a: Vec3, _ b: Vec3, _ da: Double, _ db: Double) -> Vec3 {
-        var lo = a, hi = b, dlo = da, dhi = db
-        var p = a + (b - a) * (da / (da - db))
-        for _ in 0..<6 {
-            let d = distance(p)
-            if abs(d) < 1e-7 { break }
-            if (d < 0) == (dlo < 0) { lo = p; dlo = d } else { hi = p; dhi = d }
-            let t = dlo / (dlo - dhi)
-            p = lo + (hi - lo) * (t.isFinite ? simd_clamp(t, 0.05, 0.95) : 0.5)
-        }
-        return p
-    }
-
-    func gradient(_ p: Vec3, eps: Double) -> Vec3 {
-        let dx = distance(p + Vec3(eps, 0, 0)) - distance(p - Vec3(eps, 0, 0))
-        let dy = distance(p + Vec3(0, eps, 0)) - distance(p - Vec3(0, eps, 0))
-        let dz = distance(p + Vec3(0, 0, eps)) - distance(p - Vec3(0, 0, eps))
-        let g = Vec3(dx, dy, dz)
-        let len = simd_length(g)
-        return len > 1e-12 ? g / len : Vec3(0, 0, 1)
-    }
 }

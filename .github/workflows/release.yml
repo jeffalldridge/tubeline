@@ -1,8 +1,8 @@
 name: Release
 
-# Builds, notarizes and publishes a release when a tag like v0.2.0 is pushed — the same
-# scripts/release.sh used locally. Skips cleanly until signing secrets are configured, so a
-# release made locally with `scripts/release.sh --publish` never shows a failed run.
+# Builds, notarizes, and publishes a release when a tag like v0.2.0 is pushed, using the same
+# scripts/release.sh that runs locally. Until the signing secrets below are added, every step
+# is skipped with a notice, so a release published locally never shows a failed run.
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   MACOS_CERT_P12        base64 Developer ID Application .p12 (Tent Studios, LLC)

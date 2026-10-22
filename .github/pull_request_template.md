@@ -1,6 +1,7 @@
-## What & why
+## What This Changes and Why
 
-## How I tested
-- [ ] `xcodebuild … test` passes
-- [ ] Samples still pass `usdchecker`
-- [ ] Geometry changes: before/after renders and triangle counts attached
+## How I Tested It
+
+- [ ] `xcodebuild … test` passes.
+- [ ] The samples still pass `usdchecker`.
+- [ ] For geometry changes, I attached before-and-after renders and triangle counts.

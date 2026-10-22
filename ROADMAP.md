@@ -1,50 +1,42 @@
 # Roadmap
 
-Where Tubeline is headed. This is a plan, not a promise: priorities move with feedback,
-and every item links to an issue where you can follow progress, upvote with 👍, or add a
-use case. Last updated 2026-10-22 (v0.1.0).
+This is where Tubeline is headed. It's a plan, not a promise, and priorities will shift as people use the app. Each item links to a GitHub issue, where you can follow progress, add a 👍, or describe how you'd use it.
+
+*Last updated October 22, 2026 (version 0.1.0)*
 
 ## Principles
 
-- **One job, done well:** stroked artwork → clean 3D models for motion graphics apps.
-- **USDZ is the default output.** Other formats are added alongside it, never instead of it.
-- **Clean geometry first:** one closed solid per icon, light enough to animate by the dozen.
-- **Native and private:** Apple frameworks, no third-party dependencies unless they earn it,
-  no network, no analytics. Apple silicon, macOS 14+.
+- Tubeline does one job: it turns stroked artwork into clean 3D models for motion graphics apps.
+- USDZ is the default format. New formats are added alongside it, never in its place.
+- Every icon becomes one closed solid, light enough to animate dozens at a time.
+- The app uses Apple's frameworks, avoids third-party dependencies, and never connects to the network or collects data. It runs on Apple silicon Macs with macOS 14 or later.
 
-## Now — v0.1.x
+## Now (Version 0.1)
 
-- [Validate output in motion graphics apps (Apple Motion first)](https://github.com/jeffalldridge/tubeline/issues/3)
-  — sizing, materials and performance in real projects. Feedback wanted.
-- Bug fixes from real-world icons ([report a bad conversion](https://github.com/jeffalldridge/tubeline/issues/new?template=bad-conversion.yml)).
+- [Test the output in motion graphics apps, starting with Apple Motion](https://github.com/jeffalldridge/tubeline/issues/3): check size, materials, and performance in real projects. Feedback is welcome.
+- Fix problems found with real-world icons. If one converts badly, please [report it](https://github.com/jeffalldridge/tubeline/issues/new?template=bad-conversion.yml).
 
-## Next — v0.2
+## Next (Version 0.2)
 
-- [**Export GLB (glTF 2.0) for After Effects and other apps**](https://github.com/jeffalldridge/tubeline/issues/2)
-  — USDZ stays the default; GLB (or both) as an option, with an unlit material for Solid Color.
-- [Manifold dual contouring at crossing saddles](https://github.com/jeffalldridge/tubeline/issues/4)
-  — strictly 2-manifold meshes where strokes cross.
-- [Miter and bevel stroke joins](https://github.com/jeffalldridge/tubeline/issues/5)
+- [Export GLB (glTF 2.0) for After Effects and other apps](https://github.com/jeffalldridge/tubeline/issues/2). USDZ stays the default, and you can choose GLB or both. Solid Color will use an unlit material so it looks flat in GLB too.
+- [Make meshes strictly manifold where strokes cross](https://github.com/jeffalldridge/tubeline/issues/4).
+- [Support miter and bevel corners](https://github.com/jeffalldridge/tubeline/issues/5).
 
 ## Later
 
-- [Support `<use>` and `<symbol>`](https://github.com/jeffalldridge/tubeline/issues/6)
-- [Optional crisp low-poly mode (analytic sweeps)](https://github.com/jeffalldridge/tubeline/issues/7)
-- Settings window, accessibility and localization pass
-- Mac App Store distribution (alongside the free notarized download)
+- [Support `<use>` and `<symbol>`](https://github.com/jeffalldridge/tubeline/issues/6).
+- [Add an optional low-poly mode with crisp joins](https://github.com/jeffalldridge/tubeline/issues/7).
+- Add a Settings window, and review accessibility and localization.
+- Offer Tubeline on the Mac App Store in addition to the free download.
 
-## Not planned
+## Not Planned
 
-- Textures, UVs, lights, cameras or animation inside the exported files — your motion
-  graphics app handles those.
-- `<text>` elements — convert text to outlines first.
-- Intel Macs.
+- Textures, UV maps, lights, cameras, or animation in exported files. Your motion graphics app handles those.
+- `<text>` elements. Convert text to outlines first.
+- Intel-based Macs.
 
-## How the roadmap works
+## How the Roadmap Works
 
-- Each item is a GitHub issue labeled [`roadmap`](https://github.com/jeffalldridge/tubeline/labels/roadmap);
-  this file is the summary and links to them.
-- Items move Later → Next → Now as they're scheduled, and land in [CHANGELOG.md](CHANGELOG.md)
-  when released.
-- Have an idea? [Open a feature request](https://github.com/jeffalldridge/tubeline/issues/new?template=feature.yml)
-  describing the motion-design task you're trying to do.
+Every item is a GitHub issue with the [`roadmap`](https://github.com/jeffalldridge/tubeline/labels/roadmap) label, and this page summarizes them. Items move from Later to Next to Now as work is scheduled, and finished work is listed in the [changelog](CHANGELOG.md).
+
+To suggest something, [open a feature request](https://github.com/jeffalldridge/tubeline/issues/new?template=feature.yml) and describe the motion design task you're trying to do.

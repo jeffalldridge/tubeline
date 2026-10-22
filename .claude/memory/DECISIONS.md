@@ -1,67 +1,59 @@
-# Tubeline — Decisions
+# Tubeline Decisions
 
-Architectural and product decisions with rationale. Newest first.
+Architectural and product decisions, with the reasoning behind them. Newest first.
 
-## 2026-10-22 — USDZ stays default; GLB next for After Effects (Jeff)
-After Effects prefers GLB, so GLB export (unlit material for Solid Color) is the
-v0.2 headline — as an additional format, never replacing USDZ. Public roadmap
-lives in ROADMAP.md (Now/Next/Later/Not planned) backed by `roadmap` issues.
+## October 22, 2026: Writing Follows Chicago Style in a Natural Voice (Jeff)
 
-## 2026-10-22 — Keep usdcat for USDC; Model I/O rejected (measured)
-Model I/O writes crate in-process (5 ms vs ~70 ms for usdcat) but omits
-metersPerUnit and types material colors as float3/color4f — usdchecker fails.
-We author exact USD text and convert with /usr/bin/usdcat; if usdcat is missing
-the text layer is packaged (passes `usdchecker --arkit`).
+All text that ships uses American English and the *Chicago Manual of Style* and is edited so it doesn't read like AI wrote it. The rules are in the Writing section of AGENTS.md.
 
-## 2026-10-22 — Defaults tuned for Motion performance (Jeff)
-Optimize on, facets 32 (true sides around the tube; exact normals keep shading
-round), one mesh + one material per icon (one draw call), Morton-ordered
-triangles. Apple silicon only — no Intel builds.
+## October 22, 2026: Samples Must Be Original Artwork
 
-## 2026-10-22 — Metal not used for meshing (measured)
-After CPU parallelization the GPU-friendly stage (grid sampling) takes 3–30 ms;
-the remaining cost is simplification, which is sequential graph work. A Metal
-compute path would add setup cost for no visible gain. Revisit only if users
-convert very large icons interactively.
+Three samples had reused path data from the Lucide icon set (ISC license, which requires keeping its notice). They were redrawn instead of attributed so the samples stay free of third-party terms. Tests and samples use only original artwork.
 
-## 2026-10-22 — Icon: original loop-the-loop glyph rendered by Tubeline (Jeff)
-Jeff's temp icon used SF Symbol graph.3d, which the SF Symbols license forbids
-in app icons. Replaced (Jeff chose this) with an original glyph —
-marketing/icon/glyph.svg rendered as a 3D tube by Tubeline — keeping his
-gradient/glass settings in AppIcon.icon.
+## October 22, 2026: USDZ Stays the Default; GLB Comes Next (Jeff)
 
-## 2026-10-22 — Releases: local notarized script + guarded CI workflow
-Matches sibling repos (macSubtitleOCR-gui, syntax-look-app): Developer ID
-export, notarized + stapled app and DMG, notarized CLI, SHA256SUMS, notes from
-CHANGELOG. The tag workflow skips until signing secrets exist.
+After Effects prefers GLB, so GLB export, with an unlit material for Solid Color, is the headline for 0.2. It's an additional format and never replaces USDZ. The public plan lives in ROADMAP.md, and each item is a GitHub issue labeled `roadmap`.
 
-## 2026-10-22 — Free and open source (Jeff)
-MIT license, public repo, Tent Studios as publisher. Overrides the house
-default of proprietary/paid: Tubeline is a community freebie for motion designers.
+## October 22, 2026: Releases Are Built Locally, with a Guarded CI Workflow
 
-## 2026-10-22 — Decimate with QEM, skip adaptive DC (research)
-Uniform DC is 5–12× denser than needed on straight runs. QEM edge collapse on
-the welded DC mesh, bounded by one facet's sagitta, plus exact SDF normals is
-the biggest win for the least code. Adaptive DC can't coarsen along thin tubes.
-Analytic sweeps + Manifold kept as a possible "low-poly crisp" mode later.
-See docs/research/2026-10-22-claude-mesh-optimization.md.
+This matches macSubtitleOCR-gui and syntax-look-app: a Developer ID export, a notarized and stapled app and DMG, a notarized CLI, SHA-256 checksums, and notes taken from the changelog. The tag-triggered workflow skips itself until signing secrets are added.
 
-## 2026-10-22 — Sizing is point-based (Jeff)
-Artwork is drawn in points: 1 SVG unit = 1 pt (px treated as pt, like design
-tools), 1 pt = 1/72 in by default. USD output in centimeters
-(metersPerUnit 0.01), matching Apple's tools. Extrusion depth is in points too.
+## October 22, 2026: The Icon Is an Original Glyph Rendered by Tubeline (Jeff)
 
-## 2026-10-22 — Solid Color is the default surface (Jeff)
-Emissive-only UsdPreviewSurface so icons read as flat color whatever Motion's
-lighting; Shaded (matte diffuse) is the alternative.
+Jeff's temporary icon used the SF Symbol `graph.3d`, which Apple's license forbids in app icons. Jeff chose to replace it with an original loop-the-loop glyph (`marketing/icon/glyph.svg`) rendered as a 3D tube by Tubeline, keeping his gradient and glass settings.
 
-## 2026-10-22 — One SDF solid instead of swept tubes
-Swept tubes overlap and leave interior faces; the SDF union gives clean crisp
-or filleted intersections, fills and extrusions in one model. Dual contouring
-(QEF vertices) keeps crisp seams and flat-cap rims sharp; crease vertices get
-split normals.
+## October 22, 2026: Keep usdcat for Binary USD; Model I/O Rejected (Measured)
 
-## 2026-10-22 — Only explicit fills count
-SVG's implicit black fill would turn line icons into blobs, so only declared
-fills are solid. Outlined fills become discs as thick as the outline (no torus);
-fill-only shapes extrude.
+Model I/O writes binary USD in-process in 5 ms, compared with about 70 ms for `usdcat`, but it leaves out `metersPerUnit` and gives material colors the wrong types, so `usdchecker` fails. We write exact USD text and convert it with `/usr/bin/usdcat`. If `usdcat` is missing, the text layer is packaged as is, which also passes `usdchecker --arkit`.
+
+## October 22, 2026: Defaults Favor Animation Performance (Jeff)
+
+Optimization is on, facets default to 32 (the true number of sides; exact normals keep shading round), each icon is one mesh with one material (one draw call), and triangles are ordered for the GPU. Apple silicon only.
+
+## October 22, 2026: No Metal for Meshing (Measured)
+
+After parallelizing on the CPU, grid sampling, the part a GPU would speed up, takes 3–30 ms. Most of the remaining time is mesh simplification, which is sequential graph work. A Metal path would add setup cost without a visible gain. Revisit only if people convert very large icons interactively.
+
+## October 22, 2026: Simplify with Quadric Edge Collapse; Skip Adaptive Contouring (Research)
+
+Uniform dual contouring was 5–12 times denser than needed on straight runs. Quadric edge collapse on the welded mesh, limited to one facet's sag and checked against the exact distance field, gives the biggest gain for the least code. Adaptive contouring can't coarsen much along thin tubes. See `docs/research/2026-10-22-claude-mesh-optimization.md`.
+
+## October 22, 2026: Free and Open Source (Jeff)
+
+MIT License, public repository, published by Tent Studios. This overrides the house default of proprietary, paid apps; Tubeline is a free tool for motion designers.
+
+## October 22, 2026: Sizing Is Based on Points (Jeff)
+
+Artwork is drawn in points, so one SVG unit is one point (design tools treat px and pt alike), and one point is 1/72 inch by default. USD output is in centimeters (`metersPerUnit = 0.01`), as Apple's tools write it. Extrusion depth is in points too.
+
+## October 22, 2026: Solid Color Is the Default Surface (Jeff)
+
+An emission-only `UsdPreviewSurface` makes icons read as flat color whatever the scene's lighting. Shaded, a matte diffuse material, is the alternative.
+
+## October 22, 2026: One Distance-Field Solid Instead of Swept Tubes
+
+Swept tubes overlap and leave interior faces. A single signed distance field gives clean crisp or filleted intersections, fills, and extrusions in one model. Dual contouring keeps crisp seams and flat cap edges sharp, and crease vertices get split normals.
+
+## October 22, 2026: Only Declared Fills Count
+
+SVG's implicit black fill would turn line icons into blobs, so only fills the file declares become solid. A filled shape with an outline becomes a disc as thick as the outline instead of a torus; a fill with no outline is extruded.

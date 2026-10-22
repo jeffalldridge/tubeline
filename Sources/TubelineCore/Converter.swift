@@ -30,18 +30,19 @@ public struct ConversionOptions: Codable, Equatable, Sendable {
         case extruded
     }
 
+    /// Line ends: as written in the SVG, or always round or always flat.
     public enum Caps: String, Codable, CaseIterable, Sendable {
         case svg, round, flat
     }
 
     /// Tube diameter as a multiple of the SVG stroke width.
     public var thickness = 1.0
-    /// Approximate number of flat sides around each tube. Higher is smoother and heavier.
+    /// Number of flat sides around each tube. More is smoother and heavier.
     public var facets = 32.0
     /// Rounded blend where separate strokes meet, as a fraction of the tube radius (0 = crisp).
     public var fillet = 0.0
     public var caps = Caps.svg
-    /// Turn explicitly filled shapes into solid slabs.
+    /// Turn shapes with a declared fill into solids.
     public var includeFills = true
     /// How fills that have no outline of their own are shaped.
     public var fillStyle = FillStyle.extruded
@@ -70,7 +71,7 @@ public struct ConversionReport: Sendable {
     public var fills: Int
     public var vertices: Int
     public var triangles: Int
-    /// Model width, height and depth in centimeters.
+    /// Model width, height, and depth in centimeters.
     public var dimensions: Vec3
     public var skipped: [String]
     public var seconds: Double
@@ -87,11 +88,10 @@ public enum Converter {
     public static func convert(svg: URL, to output: URL, options: ConversionOptions) throws -> ConversionReport {
         let start = Date()
         let doc = try SVGParser.parse(url: svg, tolerance: 0.005)
-        let profile = ProcessInfo.processInfo.environment["TL_PROFILE"] != nil
         let mesh = try buildMesh(doc, options: options)
         let b = mesh.bounds
-        let t0 = Date()
-        defer { if profile { print(String(format: "  write usdz: %.3fs", Date().timeIntervalSince(t0))) } }
+        var profiler = Profiler()
+        defer { profiler.lap("write USDZ") }
         try USDZWriter.write(mesh: mesh, name: output.deletingPathExtension().lastPathComponent,
                              color: parseHex(options.color), surface: options.surface, to: output)
         return ConversionReport(strokes: doc.strokes.count, fills: options.includeFills ? doc.fills.count : 0,
@@ -224,6 +224,14 @@ public enum Converter {
         return mesh
     }
 
+    /// True for "#RGB" or "#RRGGBB" (the "#" is optional).
+    public static func isValidHex(_ s: String) -> Bool {
+        var hex = s.trimmingCharacters(in: .whitespaces)
+        if hex.hasPrefix("#") { hex.removeFirst() }
+        return (hex.count == 3 || hex.count == 6) && hex.allSatisfy(\.isHexDigit)
+    }
+
+    /// Parses "#RGB" or "#RRGGBB" into 0–1 components; anything else gives white.
     public static func parseHex(_ s: String) -> SIMD3<Double> {
         var hex = s.trimmingCharacters(in: .whitespaces)
         if hex.hasPrefix("#") { hex.removeFirst() }

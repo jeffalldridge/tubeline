@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 /// A flattened subpath: a polyline that is optionally closed.
 /// Closed polylines do not repeat their first point at the end.
@@ -288,5 +289,3 @@ enum PathDataParser {
         }
     }
 }
-
-import simd

@@ -4,7 +4,8 @@ import simd
 extension Mesh {
     /// Reorders triangles along a Morton (Z-order) curve and renumbers vertices by first use,
     /// so neighboring triangles share recently transformed vertices and vertex reads walk
-    /// memory forward. Same geometry, cheaper to draw — these meshes may be animated in bulk.
+    /// memory forward. The geometry is unchanged but cheaper to draw, which matters when dozens of
+    /// icons are animated at once.
     mutating func optimizeForGPU() {
         let triCount = triangleCount
         guard triCount > 1 else { return }
