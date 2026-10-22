@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import TubelineCore
@@ -6,81 +7,162 @@ import TubelineCore
 final class AppModel {
     static let shared = AppModel()
 
-    enum Destination: String, CaseIterable {
-        case besideOriginal, folder
-    }
+    enum Destination: String, CaseIterable { case besideOriginal, folder }
+    enum EditingScope: String, CaseIterable { case batch, selected }
 
     var jobs: [Job] = []
     var selection: Job.ID?
-
+    var editingScope = EditingScope.batch
     var options: ConversionOptions {
         didSet {
             guard options != oldValue else { return }
-            save()
-            for job in jobs { if case .exported(let url) = job.status { job.status = .outdated(url) } }
+            updateFreshness()
             schedulePreview()
         }
     }
-    var destination: Destination { didSet { save() } }
+    var destination: Destination { didSet { savePreferences() } }
     var folder: URL? {
         didSet {
             if let folder { folderAccess.remember(folder) }
-            save()
+            savePreferences()
         }
     }
-    var exportOnDrop: Bool { didSet { save() } }
-
-    /// Live preview of the selected icon, rendered to a temporary file with the current settings.
+    var exportOnDrop: Bool { didSet { savePreferences() } }
     var previewURL: URL?
     var previewStats: ConversionStats?
     var previewError: String?
     var previewBusy = false
+    var isExporting = false
+    var exportCompleted = 0
+    var exportTotal = 0
+    var exportError: String?
+    var exportSummary: String?
 
+    private let defaults: UserDefaults
+    private let worker: ConversionQueue
     private let folderAccess = FolderAccess()
+    private let authorizeFolders: (([URL]) -> [URL])?
     private var previewTask: Task<Void, Never>?
-    private let previewDir = FileManager.default.temporaryDirectory.appendingPathComponent("TubelinePreview", isDirectory: true)
+    private var exportTask: Task<Void, Never>?
+    private var exportID: UUID?
+    private var exportingIDs: Set<Job.ID> = []
+    private let previewDir: URL
 
-    init() {
-        let d = UserDefaults.standard
-        options = d.data(forKey: "options").flatMap { try? JSONDecoder().decode(ConversionOptions.self, from: $0) }
-            ?? ConversionOptions()
-        destination = Destination(rawValue: d.string(forKey: "destination") ?? "") ?? .besideOriginal
-        folder = d.url(forKey: "folder")
-        exportOnDrop = d.object(forKey: "exportOnDrop") as? Bool ?? true
-        try? FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true)
+    init(defaults: UserDefaults = .standard, worker: ConversionQueue = ConversionQueue(),
+         authorizeFolders: (([URL]) -> [URL])? = nil) {
+        self.defaults = defaults
+        self.worker = worker
+        self.authorizeFolders = authorizeFolders
+        options = Self.savedOptions(defaults)
+        destination = Destination(rawValue: defaults.string(forKey: "destination") ?? "") ?? .besideOriginal
+        folder = defaults.url(forKey: "folder")
+        exportOnDrop = defaults.object(forKey: "exportOnDrop") as? Bool ?? false
+        previewDir = FileManager.default.temporaryDirectory.appendingPathComponent("TubelinePreview-\(UUID().uuidString)", isDirectory: true)
+        do { try FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true) }
+        catch { previewError = error.localizedDescription }
     }
 
-    private func save() {
-        let d = UserDefaults.standard
-        d.set(try? JSONEncoder().encode(options), forKey: "options")
-        d.set(destination.rawValue, forKey: "destination")
-        d.set(folder, forKey: "folder")
-        d.set(exportOnDrop, forKey: "exportOnDrop")
+    private static func savedOptions(_ defaults: UserDefaults) -> ConversionOptions {
+        (defaults.data(forKey: "defaultOptions") ?? defaults.data(forKey: "options"))
+            .flatMap { try? JSONDecoder().decode(ConversionOptions.self, from: $0) } ?? ConversionOptions()
+    }
+
+    private func savePreferences() {
+        defaults.set(destination.rawValue, forKey: "destination")
+        defaults.set(folder, forKey: "folder")
+        defaults.set(exportOnDrop, forKey: "exportOnDrop")
+    }
+
+    func saveCurrentAsDefaults() {
+        defaults.set(try? JSONEncoder().encode(options), forKey: "defaultOptions")
+    }
+
+    func resetSavedDefaults() {
+        defaults.set(try? JSONEncoder().encode(ConversionOptions()), forKey: "defaultOptions")
+    }
+
+    func restoreDefaults() { options = Self.savedOptions(defaults) }
+    func resetEditingOptions() {
+        if editingScope == .selected { resetSelectedOverrides() } else { restoreDefaults() }
     }
 
     var selectedJob: Job? { jobs.first { $0.id == selection } }
-
-    // MARK: Adding files
-
-    func add(_ urls: [URL]) {
-        let known = Set(jobs.map(\.source))
-        let new = SVGFinder.collect(urls).filter { !known.contains($0) }.map { Job(source: $0) }
-        guard !new.isEmpty else { return }
-        jobs += new
-        if selection == nil || selectedJob == nil { select(new[0].id) }
-        if exportOnDrop { export(new) }
+    var selectedHasOverrides: Bool { selectedJob?.hasOverrides ?? false }
+    var exportProgress: Double { exportTotal == 0 ? 0 : Double(exportCompleted) / Double(exportTotal) }
+    var destinationSummary: String {
+        destination == .besideOriginal ? "Next to Each Original" : (folder?.path ?? "Choose an Output Folder")
+    }
+    var editingOptions: ConversionOptions {
+        get { editingScope == .selected ? selectedJob.map { effectiveOptions(for: $0) } ?? options : options }
+        set {
+            guard editingScope == .selected else { options = newValue; return }
+            guard let job = selectedJob else { return }
+            let previous = effectiveOptions(for: job)
+            job.overrides.update(from: previous, to: newValue, base: options)
+            updateFreshness()
+            schedulePreview()
+        }
     }
 
+    func effectiveOptions(for job: Job) -> ConversionOptions { job.overrides.applying(to: options) }
+    func resetSelectedOverrides() {
+        guard let job = selectedJob else { return }
+        job.overrides = ConversionOverrides()
+        updateFreshness()
+        schedulePreview()
+    }
+
+    private func updateFreshness() {
+        for job in jobs {
+            guard let url = job.lastExportURL else { continue }
+            switch job.status {
+            case .exported, .outdated: break
+            default: continue
+            }
+            let current = job.lastExportOptions == effectiveOptions(for: job) && job.lastExportRevision == job.revision
+            job.status = current ? .exported(url) : .outdated(url)
+        }
+    }
+
+    // MARK: Input
+
+    func add(_ urls: [URL]) {
+        var seen: Set<URL> = []
+        let sources = SVGFinder.collect(urls).map(\.standardizedFileURL).filter { seen.insert($0).inserted }
+        guard !sources.isEmpty else {
+            exportError = "No SVG files were found. Choose SVG files or a folder containing them."
+            return
+        }
+        exportError = nil
+        var added: [Job] = []
+        for source in sources {
+            if let existing = jobs.first(where: { $0.source == source }) { refresh(existing) }
+            else {
+                let job = Job(source: source)
+                jobs.append(job)
+                added.append(job)
+            }
+        }
+        if selectedJob == nil { select(added.first?.id ?? jobs.first?.id) }
+        if exportOnDrop, !added.isEmpty { export(added) }
+    }
+
+    func refresh(_ job: Job) {
+        job.revision += 1
+        if job.status != .working { job.status = job.lastExportURL.map(Job.Status.outdated) ?? .pending }
+        if selection == job.id { schedulePreview(immediately: true) }
+    }
+    func refreshSelected() { if let job = selectedJob { refresh(job) } }
     func remove(_ job: Job) {
+        if exportingIDs.contains(job.id) { cancelExports() }
         jobs.removeAll { $0.id == job.id }
         if selection == job.id { select(jobs.first?.id) }
     }
-
     func clear() {
+        cancelExports()
         jobs.removeAll()
         select(nil)
     }
-
     func select(_ id: Job.ID?) {
         selection = id
         schedulePreview(immediately: true)
@@ -88,44 +170,108 @@ final class AppModel {
 
     // MARK: Export
 
-    func outputURL(for job: Job) -> URL {
-        let dir = destination == .folder ? (folder ?? job.source.deletingLastPathComponent()) : job.source.deletingLastPathComponent()
+    func outputURL(for job: Job) -> URL? {
+        let dir: URL
+        if destination == .folder {
+            guard let folder else { return nil }
+            dir = folder
+        } else { dir = job.source.deletingLastPathComponent() }
         return dir.appendingPathComponent(job.name + ".usdz")
     }
-
     func exportAll() { export(jobs) }
+    func exportSelected() { if let job = selectedJob { export([job]) } }
+    func revealSelectedExport() {
+        if let url = selectedJob?.exportedURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+    }
+
+    func cancelExports() {
+        exportTask?.cancel()
+        exportTask = nil
+        exportID = nil
+        for job in jobs where exportingIDs.contains(job.id) && job.status == .working { job.status = .cancelled }
+        exportingIDs.removeAll()
+        if isExporting { exportSummary = "Export canceled. Completed files were kept." }
+        isExporting = false
+    }
 
     func export(_ list: [Job]) {
-        let options = self.options
-        var pairs = list.map { ($0, outputURL(for: $0)) }
-        // The sandbox only lets us write where the user has granted access; ask once per folder.
-        let denied = Set(folderAccess.ensureWritable(pairs.map { $0.1.deletingLastPathComponent() }))
-        for (job, out) in pairs where denied.contains(out.deletingLastPathComponent().standardizedFileURL) {
-            job.status = .failed("Tubeline doesn’t have permission to save in “\(out.deletingLastPathComponent().lastPathComponent)”.")
+        guard !isExporting, !list.isEmpty else { return }
+        guard destination != .folder || folder != nil else {
+            exportError = "Choose an output folder before exporting."
+            return
         }
-        pairs.removeAll { denied.contains($0.1.deletingLastPathComponent().standardizedFileURL) }
-        for (job, _) in pairs { job.status = .working }
-        Task.detached(priority: .userInitiated) {
-            await withTaskGroup(of: Void.self) { group in
-                for (job, out) in pairs {
-                    let src = job.source
-                    group.addTask {
-                        let result: Result<ConversionReport, Error> = Result {
-                            try Converter.convert(svg: src, to: out, options: options)
-                        }
-                        await MainActor.run {
-                            switch result {
-                            case .success(let r):
-                                job.status = .exported(out)
-                                job.stats = ConversionStats(triangles: r.triangles, vertices: r.vertices,
-                                                            seconds: r.seconds, skipped: r.skipped, dimensions: r.dimensions)
-                            case .failure(let e):
-                                job.status = .failed(e.localizedDescription)
-                            }
-                        }
+        exportError = nil
+        exportSummary = nil
+        var reserved: Set<String> = []
+        let plans = list.compactMap { job -> ExportSnapshot? in
+            guard jobs.contains(where: { $0.id == job.id }), let proposed = outputURL(for: job) else { return nil }
+            return ExportSnapshot(job: job, output: ExportPlanner.uniqueURL(for: proposed, reserved: &reserved),
+                                  options: effectiveOptions(for: job), revision: job.revision,
+                                  sourceStamp: SourceStamp(url: job.source))
+        }
+        guard !plans.isEmpty else { return }
+        let folders = plans.map { $0.output.deletingLastPathComponent() }
+        let denied = Set((authorizeFolders?(folders) ?? folderAccess.ensureWritable(folders)).map(\.standardizedFileURL))
+        for plan in plans where denied.contains(plan.output.deletingLastPathComponent().standardizedFileURL) {
+            plan.job.status = .failed("Tubeline doesn’t have permission to save in “\(plan.output.deletingLastPathComponent().lastPathComponent)”. Choose another folder or allow access, then retry.")
+        }
+        let allowed = plans.filter { !denied.contains($0.output.deletingLastPathComponent().standardizedFileURL) }
+        guard !allowed.isEmpty else {
+            exportError = "No files were exported. Allow access to the output folder or choose another folder."
+            return
+        }
+        exportTotal = allowed.count
+        exportCompleted = 0
+        isExporting = true
+        let id = UUID()
+        exportID = id
+        exportingIDs = Set(allowed.map { $0.job.id })
+        for plan in allowed { plan.job.status = .working }
+        exportTask = Task { [weak self] in
+            guard let self else { return }
+            var failures = plans.count - allowed.count
+            var warnings = 0
+            for plan in allowed {
+                guard !Task.isCancelled, self.exportID == id else { return }
+                // Conversion never touches the final URL until this snapshot is accepted.
+                let stagingDirectory = plan.output.deletingLastPathComponent().appendingPathComponent(".Tubeline-\(UUID().uuidString)", isDirectory: true)
+                let staging = stagingDirectory.appendingPathComponent(plan.output.lastPathComponent)
+                defer { try? FileManager.default.removeItem(at: stagingDirectory) }
+                do {
+                    try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
+                    let report = try await self.worker.run(source: plan.job.source, output: staging, options: plan.options)
+                    try Task.checkCancellation()
+                    guard self.exportID == id else { try? FileManager.default.removeItem(at: staging); return }
+                    guard SourceStamp(url: plan.job.source) == plan.sourceStamp else {
+                        throw AppConversionError.sourceChanged
                     }
+                    var publicationReservations: Set<String> = []
+                    let final = ExportPlanner.uniqueURL(for: plan.output, reserved: &publicationReservations)
+                    try FileManager.default.moveItem(at: staging, to: final)
+                    plan.job.lastExportURL = final
+                    plan.job.lastExportOptions = plan.options
+                    plan.job.lastExportRevision = plan.revision
+                    plan.job.stats = ConversionStats(report)
+                    let current = self.effectiveOptions(for: plan.job) == plan.options && plan.job.revision == plan.revision
+                    plan.job.status = current ? .exported(final) : .outdated(final)
+                    if !report.skipped.isEmpty { warnings += 1 }
+                } catch is CancellationError {
+                    try? FileManager.default.removeItem(at: staging)
+                    return
+                } catch {
+                    try? FileManager.default.removeItem(at: staging)
+                    guard self.exportID == id else { return }
+                    plan.job.status = .failed(error.localizedDescription)
+                    failures += 1
                 }
+                self.exportCompleted += 1
             }
+            guard self.exportID == id else { return }
+            self.isExporting = false
+            self.exportingIDs.removeAll()
+            self.exportTask = nil
+            self.exportID = nil
+            self.exportSummary = "\(plans.count - failures) exported, \(warnings) with warnings, \(failures) failed."
         }
     }
 
@@ -133,32 +279,38 @@ final class AppModel {
 
     func schedulePreview(immediately: Bool = false) {
         previewTask?.cancel()
-        guard let job = selectedJob else {
-            previewURL = nil; previewStats = nil; previewError = nil; previewBusy = false
-            return
-        }
-        let src = job.source
-        let options = self.options
-        let out = previewDir.appendingPathComponent("\(job.name)-\(UUID().uuidString.prefix(8)).usdz")
+        if let old = previewURL { try? FileManager.default.removeItem(at: old) }
+        previewURL = nil
+        previewStats = nil
+        previewError = nil
+        guard let job = selectedJob else { previewBusy = false; return }
+        let source = job.source
+        let snapshot = effectiveOptions(for: job)
+        let revision = job.revision
+        let stamp = SourceStamp(url: source)
+        let out = previewDir.appendingPathComponent("\(UUID().uuidString).usdz")
         previewBusy = true
         previewTask = Task { [weak self] in
-            if !immediately { try? await Task.sleep(for: .milliseconds(200)) }
-            guard !Task.isCancelled else { return }
-            let result = await Task.detached(priority: .userInitiated) {
-                Result { try Converter.convert(svg: src, to: out, options: options) }
-            }.value
-            guard !Task.isCancelled, let self else { return }
-            self.previewBusy = false
-            switch result {
-            case .success(let r):
-                if let old = self.previewURL { try? FileManager.default.removeItem(at: old) }
+            guard let self else { return }
+            do {
+                if !immediately { try await Task.sleep(for: .milliseconds(200)) }
+                let report = try await self.worker.run(source: source, output: out, options: snapshot)
+                try Task.checkCancellation()
+                guard self.selection == job.id, self.effectiveOptions(for: job) == snapshot, job.revision == revision else {
+                    try? FileManager.default.removeItem(at: out)
+                    return
+                }
+                guard SourceStamp(url: source) == stamp else { throw AppConversionError.sourceChanged }
                 self.previewURL = out
-                self.previewStats = ConversionStats(triangles: r.triangles, vertices: r.vertices,
-                                                    seconds: r.seconds, skipped: r.skipped, dimensions: r.dimensions)
-                self.previewError = nil
-            case .failure(let e):
-                self.previewError = e.localizedDescription
-                self.previewStats = nil
+                self.previewStats = ConversionStats(report)
+                self.previewBusy = false
+            } catch is CancellationError {
+                try? FileManager.default.removeItem(at: out)
+            } catch {
+                try? FileManager.default.removeItem(at: out)
+                guard !Task.isCancelled else { return }
+                self.previewError = error.localizedDescription
+                self.previewBusy = false
             }
         }
     }

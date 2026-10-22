@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.tentstudios
   deploymentTarget:
     macOS: "14.0"
-  xcodeVersion: "16.0"
+  xcodeVersion: "26.0"
   createIntermediateGroups: true
 
 # The geometry engine is the Swift package at the repo root, shared with the

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TubelineCore
 
 @Observable
 final class Job: Identifiable {
@@ -9,23 +10,22 @@ final class Job: Identifiable {
         case exported(URL)
         case outdated(URL)
         case failed(String)
+        case cancelled
     }
 
     let id = UUID()
     let source: URL
     var status = Status.pending
     var stats: ConversionStats?
+    var overrides = ConversionOverrides()
+    var revision = 0
+    var lastExportURL: URL?
+    var lastExportOptions: ConversionOptions?
+    var lastExportRevision: Int?
 
     init(source: URL) { self.source = source }
 
     var name: String { source.deletingPathExtension().lastPathComponent }
-}
-
-extension Job {
-    var exportedURL: URL? {
-        switch status {
-        case .exported(let u), .outdated(let u): return u
-        default: return nil
-        }
-    }
+    var hasOverrides: Bool { !overrides.isEmpty }
+    var exportedURL: URL? { lastExportURL }
 }

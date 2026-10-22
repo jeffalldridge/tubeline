@@ -26,6 +26,9 @@ jobs:
       - name: Engine and CLI
         run: swift build -c release --product tubeline
 
+      - name: Engine tests
+        run: swift test
+
       - name: Convert samples and validate USDZ
         run: |
           .build/release/tubeline Samples -o "$RUNNER_TEMP/out"

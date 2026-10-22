@@ -10,7 +10,7 @@ struct TubelineApp: App {
         Window("Tubeline", id: "main") {
             ContentView()
                 .environment(model)
-                .frame(minWidth: 900, minHeight: 560)
+                .frame(minWidth: 1080, minHeight: 680)
         }
         .defaultSize(width: 1180, height: 720)
         .commands {
@@ -18,43 +18,21 @@ struct TubelineApp: App {
                 Button("Add SVGs…") { model.add(Panels.chooseSVGs()) }
                     .keyboardShortcut("o")
             }
+            CommandMenu("Icons") {
+                Button("Export All") { model.exportAll() }
+                    .disabled(model.jobs.isEmpty || model.isExporting)
+                Button("Export Selected") { model.exportSelected() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(model.selectedJob == nil || model.isExporting)
+                Button("Refresh Selected SVG") { model.refreshSelected() }
+                    .keyboardShortcut("r")
+                    .disabled(model.selectedJob == nil)
+                Button("Show Export in Finder") { model.revealSelectedExport() }
+                    .disabled(model.selectedJob?.exportedURL == nil)
+            }
         }
-    }
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Lets `swift run` builds (no app bundle) come to the front like a normal app.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    /// Files dropped on the Dock icon or opened with "Open With".
-    func application(_ application: NSApplication, open urls: [URL]) {
-        AppModel.shared.add(urls)
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-}
-
-enum Panels {
-    @MainActor
-    static func chooseSVGs() -> [URL] {
-        let p = NSOpenPanel()
-        p.allowsMultipleSelection = true
-        p.canChooseDirectories = true
-        p.allowedContentTypes = [.svg, .folder]
-        p.prompt = "Add"
-        return p.runModal() == .OK ? p.urls : []
-    }
-
-    @MainActor
-    static func chooseFolder() -> URL? {
-        let p = NSOpenPanel()
-        p.canChooseFiles = false
-        p.canChooseDirectories = true
-        p.canCreateDirectories = true
-        p.prompt = "Choose"
-        return p.runModal() == .OK ? p.url : nil
+        Settings {
+            AppSettingsView().environment(model)
+        }
     }
 }

@@ -16,6 +16,8 @@ let package = Package(
         // previews crawl. (unsafeFlags are allowed for this local, root package.)
         .target(name: "TubelineCore", swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         .executableTarget(name: "tubeline", dependencies: ["TubelineCore"]),
+        .testTarget(name: "TubelineCoreTests", dependencies: ["TubelineCore"],
+                    path: "app/TubelineTests", exclude: ["AppModelTests.swift", "PreviewCameraTests.swift"]),
     ],
     swiftLanguageModes: [.v5]
 )
