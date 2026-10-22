@@ -14,14 +14,12 @@ struct AppSettingsView: View {
             Section("Default Shape and Size") {
                 LabeledSlider(title: "Thickness", value: $model.startupOptions.thickness, range: 0.25...3, step: 0.05,
                               format: { String(format: "%.2f×", $0) })
-                HStack {
-                    Text("Output Scale")
-                    Spacer()
-                    TextField("Default Output Scale", value: $model.startupOptions.outputScale, format: .number)
-                        .labelsHidden().multilineTextAlignment(.trailing).frame(width: 55)
-                    Text("×").foregroundStyle(.secondary)
-                    Stepper("Default Output Scale", value: $model.startupOptions.outputScale, in: 1...10_000)
-                        .labelsHidden().fixedSize()
+                ValidatedScaleField(accessibilityTitle: "Default Output Scale", value: $model.startupOptions.outputScale)
+            }
+            if let error = model.startupOptionsError {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Section("All Conversion Defaults") {

@@ -65,29 +65,17 @@ struct SettingsPanel: View {
                         Text("Fit Size").tag(ConversionOptions.Sizing.fixed)
                     }
                     if model.editingOptions.sizing == .fixed {
-                        HStack {
-                            Text("Longest Side")
-                            Spacer()
-                            TextField("Longest Side in Centimeters", value: $model.editingOptions.size, format: .number.precision(.fractionLength(0...2)))
-                                .labelsHidden().multilineTextAlignment(.trailing).frame(width: 70)
-                            Text("cm").foregroundStyle(.secondary)
-                        }
+                        ValidatedNumberField(title: "Longest Side", accessibilityTitle: "Longest Side in Centimeters",
+                                             value: $model.editingOptions.size, unit: "cm", contextID: numericContext)
                     }
                     Picker("Frame", selection: $model.editingOptions.framing) {
                         Text("SVG Canvas").tag(ConversionOptions.Framing.canvas)
                         Text("Artwork").tag(ConversionOptions.Framing.content)
                     }
                     .help("Uses the canvas or artwork bounds to center the model. Fit Size scales this frame.")
-                    HStack {
-                        Text("Output Scale")
-                        Spacer()
-                        TextField("Output Scale Multiplier", value: $model.editingOptions.outputScale, format: .number)
-                            .labelsHidden().multilineTextAlignment(.trailing).frame(width: 55)
-                        Text("×").foregroundStyle(.secondary)
-                        Stepper("Output Scale", value: $model.editingOptions.outputScale, in: 1...10_000)
-                            .labelsHidden().fixedSize()
-                    }
-                    .help("Multiplies the model's final dimensions. Use a larger scale for 3D apps that work with larger objects.")
+                    ValidatedScaleField(accessibilityTitle: "Output Scale Multiplier", value: $model.editingOptions.outputScale,
+                                        contextID: numericContext)
+                        .help("Multiplies the model's final dimensions. Use a larger scale for 3D apps that work with larger objects.")
                     HStack(spacing: 8) {
                         Text("Presets").font(.caption).foregroundStyle(.secondary)
                         ForEach([1, 10, 100], id: \.self) { scale in
@@ -106,13 +94,8 @@ struct SettingsPanel: View {
                             Text("Rounded").tag(ConversionOptions.FillStyle.rounded)
                         }
                         if model.editingOptions.fillStyle == .extruded {
-                            HStack {
-                                Text("Depth")
-                                Spacer()
-                                TextField("Extrusion Depth in Points", value: $model.editingOptions.extrudeDepth, format: .number.precision(.fractionLength(0...2)))
-                                    .labelsHidden().multilineTextAlignment(.trailing).frame(width: 65)
-                                Text("pt").foregroundStyle(.secondary)
-                            }
+                            ValidatedNumberField(title: "Depth", accessibilityTitle: "Extrusion Depth in Points",
+                                                 value: $model.editingOptions.extrudeDepth, unit: "pt", contextID: numericContext)
                             LabeledSlider(title: "Edge Rounding", value: $model.editingOptions.extrudeRounding, range: 0...1, step: 0.05,
                                           format: { $0 == 0 ? "Sharp" : String(format: "%.2f", $0) })
                         }
@@ -121,12 +104,9 @@ struct SettingsPanel: View {
                 if model.editingOptions.sizing == .points {
                     Section {
                         DisclosureGroup("Unit Calibration") {
-                            HStack {
-                                Text("Millimeters per Point")
-                                Spacer()
-                                TextField("Millimeters per Artwork Point", value: $model.editingOptions.millimetersPerPoint, format: .number.precision(.fractionLength(0...4)))
-                                    .labelsHidden().multilineTextAlignment(.trailing).frame(width: 75)
-                            }
+                            ValidatedNumberField(title: "Millimeters per Point", accessibilityTitle: "Millimeters per Artwork Point",
+                                                 value: $model.editingOptions.millimetersPerPoint, unit: "", fractionDigits: 4,
+                                                 contextID: numericContext)
                         }
                     }
                 }
@@ -143,6 +123,10 @@ struct SettingsPanel: View {
                 .controlSize(.small).padding(12)
             }
         }
+    }
+
+    private var numericContext: String {
+        model.editingScope == .batch ? "batch" : "selected-\(model.selection?.uuidString ?? "none")"
     }
 
     private var sizeExplanation: String {

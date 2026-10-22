@@ -348,6 +348,99 @@ final class AppModelTests: XCTestCase {
         model.clear()
     }
 
+    func testNumericRulesParseLocaleAndRejectInvalidInput() throws {
+        let english = Locale(identifier: "en_US")
+        let german = Locale(identifier: "de_DE")
+        XCTAssertEqual(NumericInputRule.positive.parse("1.25", locale: english), 1.25)
+        XCTAssertEqual(NumericInputRule.positive.parse("1,25", locale: german), 1.25)
+        XCTAssertEqual(NumericInputRule.outputScale.parse("10.000", locale: german), 10_000)
+        XCTAssertEqual(NumericInputRule.outputScale.parse("1", locale: english), 1)
+        for text in ["", "-1", "0", "NaN", "Infinity", "2cats", "2 3", "12,34", "1.2.3", "1e999"] {
+            XCTAssertNil(NumericInputRule.positive.parse(text, locale: english), text)
+        }
+        for text in ["0", "-1", "10001", "1.5", "2cats"] {
+            XCTAssertNil(NumericInputRule.outputScale.parse(text, locale: english), text)
+        }
+    }
+
+    func testNumericDraftPreservesUnchangedCalibrationPrecision() {
+        let locale = Locale(identifier: "en_US")
+        let calibration = 25.4 / 72
+        var draft = NumericInputDraft()
+        draft.synchronize(value: calibration, locale: locale, fractionDigits: 4)
+        XCTAssertEqual(draft.text, "0.3528")
+        var boundValue = calibration
+        if let committed = draft.commit(rule: .positive, locale: locale) { boundValue = committed }
+        XCTAssertEqual(boundValue, calibration, "Focus and blur without edits must not write rounded display text")
+        XCTAssertNil(draft.error)
+    }
+
+    func testNumericDraftKeepsLastValidValueUntilCorrected() {
+        let locale = Locale(identifier: "de_DE")
+        var draft = NumericInputDraft()
+        draft.synchronize(value: 4, locale: locale, fractionDigits: 2)
+        var boundValue = 4.0
+        draft.edit("0")
+        if let committed = draft.commit(rule: .positive, locale: locale) { boundValue = committed }
+        XCTAssertEqual(boundValue, 4)
+        XCTAssertNotNil(draft.error)
+        draft.edit("1,25")
+        if let committed = draft.commit(rule: .positive, locale: locale) { boundValue = committed }
+        XCTAssertEqual(boundValue, 1.25)
+        XCTAssertNil(draft.error)
+    }
+
+    func testTinyPositiveNumericValuesAreNotDisplayedAsZero() {
+        var draft = NumericInputDraft()
+        let locale = Locale(identifier: "en_US")
+        draft.synchronize(value: 0.000001, locale: locale, fractionDigits: 4)
+        XCTAssertNotEqual(draft.text, "0")
+        XCTAssertEqual(NumericInputRule.positive.parse(draft.text, locale: locale), 0.000001)
+    }
+
+    func testInvalidStartupChangesDoNotReplaceValidPreferences() throws {
+        let defaults = makeDefaults()
+        let model = AppModel(defaults: defaults)
+        model.startupOptions.outputScale = 10
+        let original = try XCTUnwrap(defaults.data(forKey: "defaultOptions"))
+        for scale in [0, 10_001] {
+            model.startupOptions.outputScale = scale
+            XCTAssertEqual(model.startupOptions.outputScale, 10)
+            XCTAssertEqual(defaults.data(forKey: "defaultOptions"), original)
+            XCTAssertNotNil(model.startupOptionsError)
+        }
+        var invalid = model.startupOptions
+        invalid.millimetersPerPoint = .nan
+        model.startupOptions = invalid
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), original)
+        XCTAssertEqual(model.startupOptions.millimetersPerPoint, ConversionOptions().millimetersPerPoint)
+        model.options.extrudeDepth = 0
+        model.saveCurrentAsDefaults()
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), original)
+        XCTAssertNotNil(model.startupOptionsError)
+        XCTAssertEqual(AppModel(defaults: defaults).options.outputScale, 10)
+    }
+
+    func testInvalidStoredDefaultsUseValidFallbackWithoutOverwritingPreferences() throws {
+        let defaults = makeDefaults()
+        var invalid = ConversionOptions()
+        invalid.outputScale = 0
+        let invalidData = try JSONEncoder().encode(invalid)
+        defaults.set(invalidData, forKey: "defaultOptions")
+        let builtinFallback = AppModel(defaults: defaults)
+        XCTAssertEqual(builtinFallback.startupOptions, ConversionOptions())
+        XCTAssertNotNil(builtinFallback.startupOptionsError)
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), invalidData)
+        var legacy = ConversionOptions()
+        legacy.outputScale = 100
+        let legacyData = try JSONEncoder().encode(legacy)
+        defaults.set(legacyData, forKey: "options")
+        let legacyFallback = AppModel(defaults: defaults)
+        XCTAssertEqual(legacyFallback.options.outputScale, 100)
+        XCTAssertEqual(defaults.data(forKey: "options"), legacyData)
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), invalidData)
+    }
+
     private func waitForPreview(_ model: AppModel) async throws {
         let deadline = Date().addingTimeInterval(3)
         while model.previewBusy && Date() < deadline { try await Task.sleep(for: .milliseconds(5)) }

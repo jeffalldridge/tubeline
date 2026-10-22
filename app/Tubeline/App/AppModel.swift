@@ -20,8 +20,24 @@ final class AppModel {
             schedulePreview()
         }
     }
+    private var storedStartupOptions: ConversionOptions
+    var startupOptionsError: String?
     var startupOptions: ConversionOptions {
-        didSet { defaults.set(try? JSONEncoder().encode(startupOptions), forKey: "defaultOptions") }
+        get { storedStartupOptions }
+        set {
+            if let problem = ConversionOptionValidation.problem(in: newValue) {
+                startupOptionsError = problem + " Saved defaults haven’t changed."
+                return
+            }
+            do {
+                let data = try JSONEncoder().encode(newValue)
+                defaults.set(data, forKey: "defaultOptions")
+                storedStartupOptions = newValue
+                startupOptionsError = nil
+            } catch {
+                startupOptionsError = "The conversion defaults couldn’t be saved: \(error.localizedDescription)"
+            }
+        }
     }
     var destination: Destination { didSet { savePreferences() } }
     var folder: URL? {
@@ -64,8 +80,9 @@ final class AppModel {
         self.worker = worker
         self.authorizeFolders = authorizeFolders
         let saved = Self.savedOptions(defaults)
-        startupOptions = saved
-        options = saved
+        storedStartupOptions = saved.options
+        options = saved.options
+        startupOptionsError = saved.error
         destination = Destination(rawValue: defaults.string(forKey: "destination") ?? "") ?? .besideOriginal
         folder = defaults.url(forKey: "folder")
         exportOnDrop = defaults.object(forKey: "exportOnDrop") as? Bool ?? false
@@ -74,9 +91,17 @@ final class AppModel {
         catch { previewError = error.localizedDescription }
     }
 
-    private static func savedOptions(_ defaults: UserDefaults) -> ConversionOptions {
-        (defaults.data(forKey: "defaultOptions") ?? defaults.data(forKey: "options"))
-            .flatMap { try? JSONDecoder().decode(ConversionOptions.self, from: $0) } ?? ConversionOptions()
+    private static func savedOptions(_ defaults: UserDefaults) -> (options: ConversionOptions, error: String?) {
+        var rejectedSavedValue = false
+        for key in ["defaultOptions", "options"] {
+            guard let data = defaults.data(forKey: key) else { continue }
+            if let decoded = try? JSONDecoder().decode(ConversionOptions.self, from: data),
+               ConversionOptionValidation.problem(in: decoded) == nil {
+                return (decoded, rejectedSavedValue ? "Some saved defaults were invalid. Valid settings are active; stored preferences were kept." : nil)
+            }
+            rejectedSavedValue = true
+        }
+        return (ConversionOptions(), rejectedSavedValue ? "Saved defaults were invalid. Built-in settings are active; stored preferences were kept." : nil)
     }
 
     private func savePreferences() {
