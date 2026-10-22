@@ -128,6 +128,7 @@ final class USDZExportTests: XCTestCase {
         XCTAssertEqual(mesh.bounds.max.y, 9 * pointsToCentimeters, accuracy: 0.002)
         XCTAssertEqual(mesh.bounds.min.z, -pointsToCentimeters, accuracy: 0.002)
         XCTAssertEqual(mesh.bounds.max.z, pointsToCentimeters, accuracy: 0.002)
+        assertLowerRightArm(mesh.positions)
         let usd = try USDZWriter.makeUSDA(mesh: mesh, name: "asymmetric", color: SIMD3(repeating: 1), surface: .solid)
         XCTAssertTrue(usd.contains("upAxis = \"Y\""))
         XCTAssertFalse(usd.contains("xformOp"))
@@ -145,8 +146,41 @@ final class USDZExportTests: XCTestCase {
             XCTAssertLessThan(simd_distance(x, SIMD3<Float>(1, 0, 0)), 0.0001)
             XCTAssertLessThan(simd_distance(y, SIMD3<Float>(0, 1, 0)), 0.0001)
             XCTAssertLessThan(simd_distance(z, SIMD3<Float>(0, 0, 1)), 0.0001)
+            guard let source = node.geometry?.sources(for: .vertex).first,
+                  source.usesFloatComponents,
+                  source.bytesPerComponent == MemoryLayout<Float>.size,
+                  source.componentsPerVector >= 3 else {
+                return XCTFail("Expected float3 vertex positions in the exported mesh")
+            }
+            let loadedPositions: [SIMD3<Float>] = source.data.withUnsafeBytes { bytes in
+                (0..<source.vectorCount).map { index in
+                    let offset = source.dataOffset + index * source.dataStride
+                    let position = SIMD3<Float>(
+                        bytes.loadUnaligned(fromByteOffset: offset, as: Float.self),
+                        bytes.loadUnaligned(fromByteOffset: offset + 4, as: Float.self),
+                        bytes.loadUnaligned(fromByteOffset: offset + 8, as: Float.self))
+                    return node.simdConvertPosition(position, to: nil)
+                }
+            }
+            self.assertLowerRightArm(loadedPositions)
         }
         XCTAssertEqual(geometryCount, 1)
+    }
+
+    private func assertLowerRightArm(_ positions: [SIMD3<Float>],
+                                    file: StaticString = #filePath, line: UInt = #line) {
+        guard let minX = positions.map(\.x).min(), let maxX = positions.map(\.x).max(),
+              let minY = positions.map(\.y).min(), let maxY = positions.map(\.y).max() else {
+            return XCTFail("The L has no vertices", file: file, line: line)
+        }
+        // Symmetric Y bounds cannot distinguish this L from its vertical reflection.
+        let rightSide = minX + (maxX - minX) * 0.6
+        let centerY = (minY + maxY) / 2
+        let quarterHeight = (maxY - minY) / 4
+        XCTAssertTrue(positions.contains { $0.x > rightSide && $0.y < centerY - quarterHeight },
+                      "The L must have a lower-right arm", file: file, line: line)
+        XCTAssertFalse(positions.contains { $0.x > rightSide && $0.y > centerY + quarterHeight },
+                       "The L must not have an upper-right arm", file: file, line: line)
     }
 
     func testFrontPreviewUsesOrthographicProjectionAndNoRotation() {
