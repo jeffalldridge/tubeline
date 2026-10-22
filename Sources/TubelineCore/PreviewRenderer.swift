@@ -47,8 +47,10 @@ public enum PreviewScene {
     }
 
     /// Renders a still image of a USDZ, for thumbnails and command-line previews.
-    public static func renderPNG(usdz: URL, to output: URL, size: CGSize = CGSize(width: 1024, height: 1024)) throws {
-        let scene = try make(usdz: usdz)
+    public static func renderPNG(usdz: URL, to output: URL, size: CGSize = CGSize(width: 1024, height: 1024),
+                                 transparent: Bool = false, tilt: Double = 0.35) throws {
+        let scene = try make(usdz: usdz, tilt: tilt)
+        if transparent { scene.background.contents = NSColor.clear }
         let renderer = SCNRenderer(device: MTLCreateSystemDefaultDevice(), options: nil)
         renderer.scene = scene
         renderer.pointOfView = scene.rootNode.childNode(withName: cameraName, recursively: false)

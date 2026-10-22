@@ -19,9 +19,16 @@ the remaining cost is simplification, which is sequential graph work. A Metal
 compute path would add setup cost for no visible gain. Revisit only if users
 convert very large icons interactively.
 
-## 2026-10-22 — Temporary icon uses SF Symbol graph.3d (Jeff)
-Good starting point, but the SF Symbols license forbids symbols in app icons.
-Must be redrawn before any public release (Phase 5 blocker in BACKLOG).
+## 2026-10-22 — Icon: original loop-the-loop glyph rendered by Tubeline (Jeff)
+Jeff's temp icon used SF Symbol graph.3d, which the SF Symbols license forbids
+in app icons. Replaced (Jeff chose this) with an original glyph —
+marketing/icon/glyph.svg rendered as a 3D tube by Tubeline — keeping his
+gradient/glass settings in AppIcon.icon.
+
+## 2026-10-22 — Releases: local notarized script + guarded CI workflow
+Matches sibling repos (macSubtitleOCR-gui, syntax-look-app): Developer ID
+export, notarized + stapled app and DMG, notarized CLI, SHA256SUMS, notes from
+CHANGELOG. The tag workflow skips until signing secrets exist.
 
 ## 2026-10-22 — Free and open source (Jeff)
 MIT license, public repo, Tent Studios as publisher. Overrides the house

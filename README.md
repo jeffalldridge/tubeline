@@ -8,6 +8,10 @@ A free little Mac utility that turns stroked SVG icons into 3D tube models (USDZ
 
 Drag a pile of SVGs (or folders) onto the window. Every stroke becomes a round tube, as thick as the stroke, and the result is saved as a `.usdz` next to the original or in a folder you choose. A live 3D preview shows exactly what will be exported, with triangle count and real-world size.
 
+## Download
+
+Get the latest notarized build from **[Releases](https://github.com/jeffalldridge/tubeline/releases/latest)**: open the DMG and drag Tubeline to Applications. Requires an Apple silicon Mac with macOS 14 or later. A notarized `tubeline` command-line tool is attached to each release too.
+
 ## How it turns lines into solids
 
 Tubeline does not sweep separate tubes and stitch them together. It describes the whole icon as one solid (a signed distance field built from every stroke, cap, joint and fill) and extracts a single watertight surface from it with dual contouring. That's why the awkward cases come out clean.
@@ -64,8 +68,9 @@ in `Samples/User/` (gitignored).
 
 ### Releasing a notarized build
 
-`scripts/release.sh` archives, signs with Developer ID, notarizes, staples, and
-writes `dist/Tubeline-<version>.zip`. See the script header for one-time setup.
+`scripts/release.sh --publish` tests, archives, signs with Developer ID, notarizes and
+staples the app and DMG, notarizes the CLI, and creates the GitHub Release. See
+[docs/release/RELEASING.md](docs/release/RELEASING.md).
 
 ## Layout
 

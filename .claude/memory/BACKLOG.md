@@ -21,8 +21,8 @@
 - [ ] Optional crisp low-poly mode (analytic sweeps + Manifold)
 
 ## Polish / ship
-- [ ] **Redraw app icon** — current AppIcon.icon uses SF Symbol graph.3d, which the
-      SF Symbols license forbids in app icons (release blocker)
+- [x] Original icon glyph (loop-the-loop, rendered by Tubeline) replaced the SF Symbol (2026-10-22)
+- [ ] Add release signing secrets to the repo so tags release from CI (see release.yml)
 - [x] Icon Composer icon + icns-strip postBuild script wired up (2026-10-22)
 - [ ] Settings window, keyboard shortcuts, a11y labels, swiftui-pro review
 - [ ] Name research (Phase 5)

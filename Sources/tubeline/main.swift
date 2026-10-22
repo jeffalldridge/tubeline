@@ -24,12 +24,16 @@ options:
   --color <#RRGGBB>       Surface color (default #FFFFFF)
   --surface <s>           solid (flat, self-lit color) | shaded (default solid)
   --png                   Also render a preview image next to each model
+  --png-size <px>         Preview image size (default 1024)
+  --png-transparent       Transparent preview background, facing the camera (for icons)
 """
 
 var options = ConversionOptions()
 var inputs: [URL] = []
 var outputDir: URL?
 var renderPNG = false
+var pngSize = 1024.0
+var pngTransparent = false
 
 var args = CommandLine.arguments.dropFirst()
 func value(_ flag: String) -> String {
@@ -58,6 +62,8 @@ while let a = args.popFirst() {
     case "--color": options.color = value(a)
     case "--surface": options.surface = .init(rawValue: value(a)) ?? .solid
     case "--png": renderPNG = true
+    case "--png-size": pngSize = Double(value(a)) ?? 1024; renderPNG = true
+    case "--png-transparent": pngTransparent = true; renderPNG = true
     default: inputs.append(URL(fileURLWithPath: a))
     }
 }
@@ -80,7 +86,9 @@ for svg in files {
         if !r.skipped.isEmpty { line += "  skipped: " + r.skipped.joined(separator: ", ") }
         print(line)
         if renderPNG {
-            try PreviewScene.renderPNG(usdz: out, to: out.deletingPathExtension().appendingPathExtension("png"))
+            try PreviewScene.renderPNG(usdz: out, to: out.deletingPathExtension().appendingPathExtension("png"),
+                                       size: CGSize(width: pngSize, height: pngSize),
+                                       transparent: pngTransparent, tilt: pngTransparent ? 0 : 0.35)
         }
     } catch {
         failures += 1

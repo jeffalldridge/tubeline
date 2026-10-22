@@ -5,6 +5,10 @@ All notable changes to Tubeline. Format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-22
+
+First public release.
+
 ### Changed
 - Meshes are 6–14× lighter at the same visual quality: quadric edge-collapse
   simplification, checked against the exact surface, collapses straight runs and
@@ -18,7 +22,10 @@ All notable changes to Tubeline. Format follows
 
 ### Added
 - "Optimize mesh" toggle (on by default) and `--no-optimize` CLI flag.
-- Temporary app icon (Icon Composer) with the sibling icns-strip build step.
+- App icon: an original loop-the-loop tube glyph rendered by Tubeline itself
+  (`scripts/render-icon.sh`), composed in Icon Composer.
+- Notarized releases: `scripts/release.sh` builds a signed, notarized DMG and
+  command-line tool; a tag-triggered workflow can do the same in CI.
 - SVG → 3D tube conversion: strokes become round tubes; one fused, watertight
   solid per icon via a signed distance field and dual contouring.
 - Crisp, Soft or Round intersections; caps from SVG or forced round/flat;
@@ -30,3 +37,6 @@ All notable changes to Tubeline. Format follows
   sandboxed "save next to original" with remembered folder grants.
 - `tubeline` command-line tool with `--png` previews.
 - Unit tests for parsing, dashing, meshing (watertightness), sizing and USDZ packaging.
+
+[Unreleased]: https://github.com/jeffalldridge/tubeline/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/jeffalldridge/tubeline/releases/tag/v0.1.0

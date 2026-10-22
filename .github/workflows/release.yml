@@ -1,0 +1,101 @@
+name: Release
+
+# Builds, notarizes and publishes a release when a tag like v0.2.0 is pushed — the same
+# scripts/release.sh used locally. Skips cleanly until signing secrets are configured, so a
+# release made locally with `scripts/release.sh --publish` never shows a failed run.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   MACOS_CERT_P12        base64 Developer ID Application .p12 (Tent Studios, LLC)
+#   MACOS_CERT_PASSWORD   password used when exporting the .p12
+#   KEYCHAIN_PASSWORD     any random string (runner keychain)
+#   NOTARY_KEY            base64 App Store Connect API key (.p8)
+#   NOTARY_KEY_ID         10-character key ID
+#   NOTARY_ISSUER_ID      issuer UUID
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check signing secrets
+        id: secrets
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12 }}
+          KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          if [[ -n "$P12" && -n "$KEY" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Signing secrets are not configured; release built locally with scripts/release.sh --publish."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ready == 'true'
+
+      - name: Install XcodeGen
+        if: steps.secrets.outputs.ready == 'true'
+        run: brew install xcodegen
+
+      - name: Check the tag matches the app version
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          version=$(sed -n 's/^ *MARKETING_VERSION: *"\(.*\)"/\1/p' app/project.yml | head -1)
+          [[ "v$version" == "$GITHUB_REF_NAME" ]] || { echo "Tag $GITHUB_REF_NAME ≠ MARKETING_VERSION $version" >&2; exit 1; }
+
+      - name: Import Developer ID certificate
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          echo -n "$MACOS_CERT_P12" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Store notary credentials
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          echo -n "$NOTARY_KEY" | base64 --decode -o "$RUNNER_TEMP/AuthKey.p8"
+          xcrun notarytool store-credentials tubeline-notary \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Build, notarize, package
+        if: steps.secrets.outputs.ready == 'true'
+        run: scripts/release.sh
+
+      - name: Publish GitHub Release
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          files=(build/release/Tubeline-$v.dmg build/release/tubeline-cli-$v.zip build/release/SHA256SUMS.txt)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" --title "Tubeline $v" \
+              --notes-file build/release/release-notes.md --verify-tag
+          fi
