@@ -2,6 +2,11 @@
 
 Architectural and product decisions with rationale. Newest first.
 
+## 2026-10-22 — USDZ stays default; GLB next for After Effects (Jeff)
+After Effects prefers GLB, so GLB export (unlit material for Solid Color) is the
+v0.2 headline — as an additional format, never replacing USDZ. Public roadmap
+lives in ROADMAP.md (Now/Next/Later/Not planned) backed by `roadmap` issues.
+
 ## 2026-10-22 — Keep usdcat for USDC; Model I/O rejected (measured)
 Model I/O writes crate in-process (5 ms vs ~70 ms for usdcat) but omits
 metersPerUnit and types material colors as float3/color4f — usdchecker fails.

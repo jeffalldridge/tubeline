@@ -1,8 +1,11 @@
 # Tubeline — Backlog
 
+Public roadmap: ROADMAP.md + GitHub issues labeled `roadmap` (#2–#7). Keep both in sync.
+
 ## NEXT SESSION FIRST
 - [x] Phase 3: QEM decimation + exact normals + speed pass (2026-10-22)
-- [ ] Jeff: test exported icons in Motion (Phase 2) — the next real unknown
+- [ ] Jeff: test exported icons in Motion (Phase 2) — the next real unknown (#3)
+- [ ] GLB export for After Effects, USDZ stays default (#2) — v0.2 headline
 
 ## Phase 2 — Validation in motion apps (Jeff) — Apple Motion first
 - [ ] Import samples into Motion: does 1 pt = 1/72 in give a sensible size?

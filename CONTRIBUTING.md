@@ -3,6 +3,9 @@
 Thanks for helping. Tubeline is small on purpose: one job (stroked SVG → clean 3D tubes for
 motion graphics apps like Apple Motion), native frameworks, no third-party dependencies.
 
+Before starting something big, check [ROADMAP.md](ROADMAP.md) and comment on the matching
+issue so we can agree on the approach.
+
 ## Reporting a bad conversion
 
 The most useful report is an SVG that converts wrong. Please attach:

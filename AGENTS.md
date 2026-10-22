@@ -111,6 +111,12 @@ Standard Tent Studios Hello/Shutdown protocol.
 **Shutdown:** present-then-execute — decisions, MEMORY.md entry preview, git
 state, suggested commits; on confirmation update memory files.
 
+## Roadmap
+
+`ROADMAP.md` is the public plan (Now / Next / Later / Not planned); every item is a GitHub
+issue labeled `roadmap`. Update both when priorities change; released items move to
+CHANGELOG.md. USDZ is always the default export format.
+
 ## Skills
 
 Portfolio-level skills in `~/Documents/GitHub/.claude/skills/`:

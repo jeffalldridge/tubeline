@@ -83,6 +83,10 @@ Samples/                Test SVGs (Samples/User/ is yours, gitignored)
 docs/                   Research, release and testing notes
 ```
 
+## Roadmap
+
+Next up: **GLB export** for After Effects and other apps, with USDZ staying the default. See [ROADMAP.md](ROADMAP.md) for what's now, next and later.
+
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). An SVG that converts badly is the most useful bug report you can file.
