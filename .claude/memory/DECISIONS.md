@@ -2,6 +2,10 @@
 
 Architectural and product decisions, with the reasoning behind them. Newest first.
 
+## October 22, 2026: Light Protection for main (Jeff)
+
+A repository ruleset named "Protect main" blocks force pushes and branch deletion and requires the `build-and-test` CI check on pull requests. Repository admins can bypass it, so Jeff and his agents keep pushing directly to `main`. Required reviews and required pull requests were left off because they would force a solo maintainer to review his own work.
+
 ## October 22, 2026: Writing Follows Chicago Style in a Natural Voice (Jeff)
 
 All text that ships uses American English and the *Chicago Manual of Style* and is edited so it doesn't read like AI wrote it. The rules are in the Writing section of AGENTS.md.

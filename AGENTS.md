@@ -96,6 +96,7 @@ The public plan is [ROADMAP.md](ROADMAP.md). Every item there is a GitHub issue 
 - Use typed errors (`LocalizedError`). Don't fail silently, and don't force-unwrap in production code paths.
 - Comments explain why, not what.
 - Use Conventional Commits. AI agents may commit freely, but push only when Jeff asks.
+- `main` is protected by the "Protect main" ruleset: no force pushes, no deletion, and pull requests need the `build-and-test` CI check to pass. Repository admins bypass it, so Jeff (and agents pushing as Jeff) can still push directly. Never rewrite published history.
 - Commit the `.claude/memory` files.
 
 ## Writing
