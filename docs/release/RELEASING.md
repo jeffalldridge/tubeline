@@ -13,7 +13,7 @@ Each release is signed with the Tent Studios, LLC Developer ID certificate (team
    scripts/release.sh --publish   # Also tags vX.Y.Z, pushes the tag, and creates the release.
    ```
 
-   The script uses a notarytool keychain profile named `tubeline-notary`. To use a different profile for the same team, set `TUBELINE_NOTARY_PROFILE`.
+   The script defaults to a notarytool keychain profile named `tubeline-notary`. Jeff's release Mac currently uses the existing team profile `syntaxlook-notary`; run `TUBELINE_NOTARY_PROFILE=syntaxlook-notary scripts/release.sh --publish` there. To use another stored profile for the same team, set `TUBELINE_NOTARY_PROFILE`.
 
 ## What the Script Checks
 
