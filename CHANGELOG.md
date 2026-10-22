@@ -6,6 +6,7 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ### Fixed
 
+- Concurrent CLI exports publish without replacing another process's file. A late preview-image collision preserves the existing PNG and reports partial success.
 - Removing a completed or failed row no longer cancels the remaining batch.
 - Automatic export queues SVGs added or refreshed during an active batch, uses current settings when each request starts, and clears queued requests on Cancel.
 

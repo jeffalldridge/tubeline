@@ -34,7 +34,9 @@ Commit `a5cc62e` fixes automatic-export requests lost during active batches and 
 
 The complete app suite passed sixty-one tests, and the standalone core suite passed forty-four. A clean and incremental app build passed the built-product metadata and icon checks. The validator change was compared against the release baseline across all 162 SVGs: triangle counts, strict validity, geometry/index hashes, normal hashes, and warning counts matched exactly.
 
-Three alternating runs on one complex icon measured median parse-and-mesh time of 5.707 s for the release baseline and 5.246 s for the validator change, about 8.1 percent lower. This is a result for one case, not a corpus-wide speed claim. Larger extraction and validator experiments remain temporary and unmerged.
+Three alternating runs on one complex icon measured median parse-and-mesh time of 5.707 s for the release baseline and 5.246 s for the validator change, about 8.1 percent lower. This is a result for one case, not a corpus-wide speed claim. Larger extraction and validator experiments remain unmerged. Reviewable patches and their limits are saved in `docs/research/experiments/README.md`.
+
+Commit `829e1a9` fixes a reproduced concurrent CLI race: both processes could report success while only one output survived. The CLI now stages beside the destination and uses an atomic exclusive rename, retrying a unique name on collision. PNG publication preserves existing files too; a late PNG collision reports partial success. Explicit `--replace` remains replacement. `scripts/test-cli-output.sh` passes the new CLI, detects the race in the released CLI, and runs in CI. Model/PNG races, replacement, reserved batch names, and staging cleanup were checked locally.
 
 ## Continue Development
 
