@@ -57,6 +57,10 @@ enum Dasher {
         }
         if index % 2 == 0, !current.isEmpty {
             out.append(Polyline2D(points: dedupe(current), closed: false))
+        } else if !poly.closed, remaining < 1e-9, let end = pts.last {
+            // A gap that ends exactly at the path's end starts one more dash there,
+            // which browsers draw as a dot with round or square caps.
+            out.append(Polyline2D(points: [end], closed: false))
         }
         // On a closed path, a dash running through the start point is one dash, not two.
         if poly.closed, out.count >= 2, index % 2 == 0, startsOn,
