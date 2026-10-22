@@ -9,6 +9,10 @@ transforms, CSS classes, dashes), SDF + dual contouring mesher with crisp
 creases and fillets, fills (discs) and extrusions, USDZ writer, SwiftUI app with
 SceneKit preview, CLI. Moved into the house layout (app/, sandbox, tests, docs).
 Research on decimation saved to docs/research/.
-**State after:** 21 tests green; Motion import not yet tested by Jeff.
-**Next:** QEM decimation + speed pass (Phase 3), Jeff's own icons in Samples/User,
-Motion validation (Phase 2), app icon.
+Then Phase 3: QEM simplification against the exact SDF (6–14× fewer tris), parallel
+meshing (3–7× faster), facets default 32, arm64-only, temp Icon Composer icon.
+Published (Jeff's explicit request) as public MIT repo github.com/jeffalldridge/tubeline
+with CI, contributing/security/conduct docs.
+**State after:** 22 tests green; Motion import still untested.
+**Next:** Jeff tests in Motion (Phase 2) + drops own icons in Samples/User; redraw icon
+(SF Symbol license); manifold DC for crossing pinch edges.
