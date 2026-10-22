@@ -39,7 +39,7 @@ Clipping, masks, filters, nested SVG viewports, and non-scaling strokes are unsu
 ## Settings
 
 - **Thickness:** tube diameter as a multiple of the stroke width.
-- **Detail:** the target curve detail (default 32), under Advanced. This controls meshing density, rather than an exact count of polygon sides. Higher values make heavier meshes.
+- **Detail:** the target curve detail (default 32), at the top of the main settings panel. Low, Balanced, and High presets make it quick to compare triangle counts. This controls meshing density, rather than an exact count of polygon sides. Higher values make heavier meshes.
 - **Optimize Mesh:** simplifies the model (on by default). Turn it off to keep the dense mesh.
 - **Ends:** the SVG's own line caps, or always round or always flat.
 - **Intersections:** Crisp, Soft, or Round, with a slider to fine-tune the blend.
@@ -51,7 +51,7 @@ Clipping, masks, filters, nested SVG viewports, and non-scaling strokes are unsu
 
 Each file contains a single mesh with smooth normals and one `UsdPreviewSurface` material. Models are Y-up and measured in centimeters (`metersPerUnit = 0.01`), with no lights or cameras, and they pass Apple's `usdchecker`.
 
-App Settings lets you save the current batch settings as defaults for future sessions. Automatic export is off for new installations; you can enable it there after choosing your settings and destination. Files added or refreshed during an automatic export wait for the current batch. Cancel Export clears that queue, keeps completed files, and stops remaining work. A conversion already meshing finishes its current stage before cancellation takes effect.
+App Settings lets you set default Detail, mesh optimization, thickness, and output scale directly, or save every current batch setting as defaults. These preferences are saved automatically for future sessions; Restore Saved Defaults applies them to the active batch. Automatic export is off for new installations; you can enable it there after choosing your settings and destination. Files added or refreshed during an automatic export wait for the current batch. Cancel Export clears that queue, keeps completed files, and stops remaining work. A conversion already meshing finishes its current stage before cancellation takes effect.
 
 ### Sizing in Motion
 

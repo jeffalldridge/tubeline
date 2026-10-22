@@ -22,6 +22,27 @@ final class AppModelTests: XCTestCase {
                          dimensions: SIMD3(1, 1, 1), skipped: [], seconds: 0)
     }
 
+    func testStartupPreferencesPersistWithoutChangingCurrentBatch() {
+        let defaults = makeDefaults()
+        let model = AppModel(defaults: defaults, authorizeFolders: { _ in [] })
+        let current = model.options
+        model.startupOptions.facets = 16
+        model.startupOptions.optimize = false
+        model.startupOptions.outputScale = 10
+        XCTAssertEqual(model.options, current)
+        let reopened = AppModel(defaults: defaults, authorizeFolders: { _ in [] })
+        XCTAssertEqual(reopened.options.facets, 16)
+        XCTAssertFalse(reopened.options.optimize)
+        XCTAssertEqual(reopened.options.outputScale, 10)
+        model.restoreDefaults()
+        XCTAssertEqual(model.options, reopened.options)
+        model.resetSavedDefaults()
+        XCTAssertEqual(model.startupOptions, ConversionOptions())
+        XCTAssertEqual(model.options.facets, 16)
+        model.clear()
+        reopened.clear()
+    }
+
     func testSelectedOverridesKeepUntouchedFieldsInherited() {
         let model = AppModel(defaults: makeDefaults(), authorizeFolders: { _ in [] })
         let job = Job(source: URL(fileURLWithPath: "/tmp/example.svg"))

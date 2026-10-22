@@ -29,6 +29,9 @@ struct SettingsPanel: View {
             .padding(16)
             Divider()
             Form {
+                Section("Mesh") {
+                    MeshControls(detail: $model.editingOptions.facets, optimize: $model.editingOptions.optimize)
+                }
                 Section("Shape") {
                     LabeledSlider(title: "Thickness", value: $model.editingOptions.thickness, range: 0.25...3, step: 0.05,
                                   format: { String(format: "%.2f×", $0) }, help: "Tube diameter as a multiple of the SVG stroke width.")
@@ -44,6 +47,8 @@ struct SettingsPanel: View {
                         Text("Round").tag(ConversionOptions.Caps.round)
                         Text("Flat").tag(ConversionOptions.Caps.flat)
                     }
+                    LabeledSlider(title: "Intersection Blend", value: $model.editingOptions.fillet, range: 0...1, step: 0.05,
+                                  format: { $0 == 0 ? "None" : String(format: "%.2f", $0) })
                 }
                 Section("Surface") {
                     Picker("Material", selection: $model.editingOptions.surface) {
@@ -93,32 +98,29 @@ struct SettingsPanel: View {
                     .controlSize(.small)
                     Text(sizeExplanation).font(.caption).foregroundStyle(.secondary)
                 }
-                Section {
-                    DisclosureGroup("Advanced") {
-                        LabeledSlider(title: "Detail", value: $model.editingOptions.facets, range: 12...96, step: 2,
-                                      format: { "\(Int($0))" }, help: "Target curve detail. Higher values produce smoother silhouettes and heavier meshes.")
-                        Toggle("Optimize Mesh", isOn: $model.editingOptions.optimize)
-                        LabeledSlider(title: "Intersection Blend", value: $model.editingOptions.fillet, range: 0...1, step: 0.05,
-                                      format: { $0 == 0 ? "None" : String(format: "%.2f", $0) })
-                        Toggle("Include Fills", isOn: $model.editingOptions.includeFills)
-                        if model.editingOptions.includeFills {
-                            Picker("Fills Without Outlines", selection: $model.editingOptions.fillStyle) {
-                                Text("Extrude").tag(ConversionOptions.FillStyle.extruded)
-                                Text("Rounded").tag(ConversionOptions.FillStyle.rounded)
-                            }
-                            if model.editingOptions.fillStyle == .extruded {
-                                HStack {
-                                    Text("Depth")
-                                    Spacer()
-                                    TextField("Extrusion Depth in Points", value: $model.editingOptions.extrudeDepth, format: .number.precision(.fractionLength(0...2)))
-                                        .labelsHidden().multilineTextAlignment(.trailing).frame(width: 65)
-                                    Text("pt").foregroundStyle(.secondary)
-                                }
-                                LabeledSlider(title: "Edge Rounding", value: $model.editingOptions.extrudeRounding, range: 0...1, step: 0.05,
-                                              format: { $0 == 0 ? "Sharp" : String(format: "%.2f", $0) })
-                            }
+                Section("Fills") {
+                    Toggle("Include Fills", isOn: $model.editingOptions.includeFills)
+                    if model.editingOptions.includeFills {
+                        Picker("Fills Without Outlines", selection: $model.editingOptions.fillStyle) {
+                            Text("Extrude").tag(ConversionOptions.FillStyle.extruded)
+                            Text("Rounded").tag(ConversionOptions.FillStyle.rounded)
                         }
-                        if model.editingOptions.sizing == .points {
+                        if model.editingOptions.fillStyle == .extruded {
+                            HStack {
+                                Text("Depth")
+                                Spacer()
+                                TextField("Extrusion Depth in Points", value: $model.editingOptions.extrudeDepth, format: .number.precision(.fractionLength(0...2)))
+                                    .labelsHidden().multilineTextAlignment(.trailing).frame(width: 65)
+                                Text("pt").foregroundStyle(.secondary)
+                            }
+                            LabeledSlider(title: "Edge Rounding", value: $model.editingOptions.extrudeRounding, range: 0...1, step: 0.05,
+                                          format: { $0 == 0 ? "Sharp" : String(format: "%.2f", $0) })
+                        }
+                    }
+                }
+                if model.editingOptions.sizing == .points {
+                    Section {
+                        DisclosureGroup("Unit Calibration") {
                             HStack {
                                 Text("Millimeters per Point")
                                 Spacer()

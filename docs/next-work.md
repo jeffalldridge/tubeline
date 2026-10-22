@@ -38,6 +38,8 @@ Three alternating runs on one complex icon measured median parse-and-mesh time o
 
 Commit `829e1a9` fixes a reproduced concurrent CLI race: both processes could report success while only one output survived. The CLI now stages beside the destination and uses an atomic exclusive rename, retrying a unique name on collision. PNG publication preserves existing files too; a late PNG collision reports partial success. Explicit `--replace` remains replacement. `scripts/test-cli-output.sh` passes the new CLI, detects the race in the released CLI, and runs in CI. Model/PNG races, replacement, reserved batch names, and staging cleanup were checked locally.
 
+The settings hierarchy now starts with Detail and Optimize Mesh. Low, Balanced, and High presets use detail targets of 16, 32, and 64. Fill controls and intersection blending are exposed; only unit calibration stays collapsed. App Settings directly edits persistent startup detail, optimization, thickness, and output scale. The full app suite passed sixty-two tests, including startup preference persistence and separation from active batch settings. Native checks confirmed the main hierarchy, preferences window, and a heart changing from 2,228 to 8,038 to 29,022 triangles across the three presets. Saved user defaults were left unchanged during native checks.
+
 ## Continue Development
 
 Work after the tag is on `codex/mesh-optimization`. Do not alter or move the published tag. Priorities:

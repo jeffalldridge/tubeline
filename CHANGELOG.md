@@ -12,6 +12,9 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ### Changed
 
+- Detail and Optimize Mesh appear first in the main settings panel, with Low, Balanced, and High detail presets. Intersection blending and fill depth are exposed in their regular sections; only unit calibration remains collapsed.
+- App Settings directly edits saved defaults for mesh detail, optimization, thickness, and output scale without changing an active batch.
+
 - Meshing retries skip additional diagnostics after a mesh is already known to be invalid. Complete validation reports and acceptance rules are unchanged.
 - Release preflight checks the built app's copyright, category, encryption declaration, and privacy-manifest syntax.
 - Orientation tests now detect vertical mirroring in both the generated mesh and reloaded USDZ.

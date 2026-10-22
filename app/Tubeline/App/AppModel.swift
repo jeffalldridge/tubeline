@@ -20,6 +20,9 @@ final class AppModel {
             schedulePreview()
         }
     }
+    var startupOptions: ConversionOptions {
+        didSet { defaults.set(try? JSONEncoder().encode(startupOptions), forKey: "defaultOptions") }
+    }
     var destination: Destination { didSet { savePreferences() } }
     var folder: URL? {
         didSet {
@@ -60,7 +63,9 @@ final class AppModel {
         self.defaults = defaults
         self.worker = worker
         self.authorizeFolders = authorizeFolders
-        options = Self.savedOptions(defaults)
+        let saved = Self.savedOptions(defaults)
+        startupOptions = saved
+        options = saved
         destination = Destination(rawValue: defaults.string(forKey: "destination") ?? "") ?? .besideOriginal
         folder = defaults.url(forKey: "folder")
         exportOnDrop = defaults.object(forKey: "exportOnDrop") as? Bool ?? false
@@ -81,14 +86,14 @@ final class AppModel {
     }
 
     func saveCurrentAsDefaults() {
-        defaults.set(try? JSONEncoder().encode(options), forKey: "defaultOptions")
+        startupOptions = options
     }
 
     func resetSavedDefaults() {
-        defaults.set(try? JSONEncoder().encode(ConversionOptions()), forKey: "defaultOptions")
+        startupOptions = ConversionOptions()
     }
 
-    func restoreDefaults() { options = Self.savedOptions(defaults) }
+    func restoreDefaults() { options = startupOptions }
     func resetEditingOptions() {
         if editingScope == .selected { resetSelectedOverrides() } else { restoreDefaults() }
     }
