@@ -1,0 +1,78 @@
+name: Tubeline
+options:
+  bundleIdPrefix: com.tentstudios
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+# The geometry engine is the Swift package at the repo root, shared with the
+# `tubeline` command-line tool.
+packages:
+  TubelineCore:
+    path: ..
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ACL5A8Y9U7
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+
+targets:
+  Tubeline:
+    type: application
+    platform: macOS
+    sources:
+      - path: Tubeline
+    dependencies:
+      - package: TubelineCore
+        product: TubelineCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tentstudios.tubeline
+        PRODUCT_NAME: Tubeline
+        # Hand-written plist carries document types (Dock drop / Open With) and
+        # copyright; INFOPLIST_KEY_* is ignored when a custom plist is set.
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Tubeline/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Tubeline/Resources/Tubeline.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        COMBINE_HIDPI_IMAGES: true
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_USER_SELECTED_FILES: readwrite
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    # When the Icon Composer AppIcon.icon lands, add the sibling icns-strip
+    # postBuild script WITH declared inputFiles (validator error 90236) —
+    # copy verbatim from readermd-app/project.yml.
+
+  TubelineTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: TubelineTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tentstudios.tubeline.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Tubeline
+      - package: TubelineCore
+        product: TubelineCore
+
+schemes:
+  Tubeline:
+    build:
+      targets:
+        Tubeline: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TubelineTests

@@ -25,7 +25,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Free and open source. MIT License.</string>
+	<string>Copyright © 2026 Tent Studios LLC. Free and open source under the MIT License.</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

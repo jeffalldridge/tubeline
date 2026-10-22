@@ -192,12 +192,3 @@ struct JobRow: View {
         return job.source.path
     }
 }
-
-extension Job {
-    var exportedURL: URL? {
-        switch status {
-        case .exported(let u), .outdated(let u): return u
-        default: return nil
-        }
-    }
-}

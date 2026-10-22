@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#000" stroke-width="2">
+  <!-- caps: butt, round, square -->
+  <path d="M6 6h10" stroke-linecap="butt"/>
+  <path d="M6 11h10" stroke-linecap="round"/>
+  <path d="M6 16h10" stroke-linecap="square"/>
+  <!-- dashed line and dotted line -->
+  <path d="M22 6h20" stroke-dasharray="4 2"/>
+  <path d="M22 12h20" stroke-dasharray="0 4" stroke-linecap="round"/>
+  <!-- dashed closed circle, outlined + filled disc, fill-only dot -->
+  <circle cx="12" cy="32" r="7" stroke-dasharray="3 2.5" stroke-linecap="round"/>
+  <circle cx="28" cy="32" r="6" fill="#000" stroke-linecap="round"/>
+  <circle cx="41" cy="32" r="2" fill="#000" stroke="none"/>
+  <!-- crossing lines with flat caps and a sharp corner -->
+  <path d="M6 44 L20 22 L34 44" stroke-linecap="butt" stroke-linejoin="miter" transform="translate(4 0) scale(.9)"/>
+</svg>

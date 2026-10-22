@@ -1,13 +1,11 @@
 #!/bin/zsh
-# Builds, signs, notarizes and staples Tubeline, then packages it as a zip in dist/.
+# Builds, signs (Developer ID), notarizes and staples Tubeline, then zips it into dist/.
 #
-# One-time setup:
-#   1. Put your team in Config/Local.xcconfig:  DEVELOPMENT_TEAM = ABCDE12345
-#   2. Have a "Developer ID Application" certificate in your keychain.
-#   3. Store notary credentials:
-#        xcrun notarytool store-credentials tubeline-notary --apple-id you@example.com --team-id ABCDE12345
+# One-time setup: a "Developer ID Application" certificate for team ACL5A8Y9U7 in
+# your keychain, and notary credentials:
+#   xcrun notarytool store-credentials tubeline-notary --apple-id <you> --team-id ACL5A8Y9U7
 #
-# Usage: Scripts/release.sh [keychain-profile]   (default profile: tubeline-notary)
+# Usage: scripts/release.sh [keychain-profile]   (default: tubeline-notary)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,23 +15,13 @@ ARCHIVE="$BUILD/Tubeline.xcarchive"
 EXPORT="$BUILD/export"
 mkdir -p "$BUILD" dist
 
-if command -v xcodegen >/dev/null; then xcodegen generate --quiet; fi
-
-xcodebuild -project Tubeline.xcodeproj -scheme Tubeline -configuration Release \
+(cd app && xcodegen generate --quiet)
+xcodebuild -project app/Tubeline.xcodeproj -scheme Tubeline -configuration Release \
   -archivePath "$ARCHIVE" archive
-
-cat > "$BUILD/ExportOptions.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>method</key><string>developer-id</string>
-  <key>signingStyle</key><string>automatic</string>
-</dict></plist>
-PLIST
 
 rm -rf "$EXPORT"
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
-  -exportOptionsPlist "$BUILD/ExportOptions.plist"
+  -exportOptionsPlist app/ExportOptions-developer-id.plist
 
 APP="$EXPORT/Tubeline.app"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist")

@@ -2,34 +2,6 @@ import Foundation
 import Observation
 import TubelineCore
 
-struct ConversionStats: Equatable {
-    var triangles: Int
-    var vertices: Int
-    var seconds: Double
-    var skipped: [String]
-    var dimensions: SIMD3<Double>
-}
-
-@Observable
-final class Job: Identifiable {
-    enum Status: Equatable {
-        case pending
-        case working
-        case exported(URL)
-        case outdated(URL)
-        case failed(String)
-    }
-
-    let id = UUID()
-    let source: URL
-    var status = Status.pending
-    var stats: ConversionStats?
-
-    init(source: URL) { self.source = source }
-
-    var name: String { source.deletingPathExtension().lastPathComponent }
-}
-
 @Observable
 final class AppModel {
     static let shared = AppModel()
@@ -50,7 +22,12 @@ final class AppModel {
         }
     }
     var destination: Destination { didSet { save() } }
-    var folder: URL? { didSet { save() } }
+    var folder: URL? {
+        didSet {
+            if let folder { folderAccess.remember(folder) }
+            save()
+        }
+    }
     var exportOnDrop: Bool { didSet { save() } }
 
     /// Live preview of the selected icon, rendered to a temporary file with the current settings.
@@ -59,6 +36,7 @@ final class AppModel {
     var previewError: String?
     var previewBusy = false
 
+    private let folderAccess = FolderAccess()
     private var previewTask: Task<Void, Never>?
     private let previewDir = FileManager.default.temporaryDirectory.appendingPathComponent("TubelinePreview", isDirectory: true)
 
@@ -119,7 +97,13 @@ final class AppModel {
 
     func export(_ list: [Job]) {
         let options = self.options
-        let pairs = list.map { ($0, outputURL(for: $0)) }
+        var pairs = list.map { ($0, outputURL(for: $0)) }
+        // The sandbox only lets us write where the user has granted access; ask once per folder.
+        let denied = Set(folderAccess.ensureWritable(pairs.map { $0.1.deletingLastPathComponent() }))
+        for (job, out) in pairs where denied.contains(out.deletingLastPathComponent().standardizedFileURL) {
+            job.status = .failed("No permission to save in “\(out.deletingLastPathComponent().lastPathComponent)”")
+        }
+        pairs.removeAll { denied.contains($0.1.deletingLastPathComponent().standardizedFileURL) }
         for (job, _) in pairs { job.status = .working }
         Task.detached(priority: .userInitiated) {
             await withTaskGroup(of: Void.self) { group in
