@@ -28,9 +28,13 @@ struct SettingsPanel: View {
             }
             .padding(16)
             Divider()
+            MeshControls(detail: $model.editingOptions.facets)
+                .padding(16)
+            Divider()
             Form {
-                Section("Mesh") {
-                    MeshControls(detail: $model.editingOptions.facets, optimize: $model.editingOptions.optimize)
+                Section("Mesh Optimization") {
+                    Toggle("Optimize Mesh", isOn: $model.editingOptions.optimize)
+                        .help("Reduce triangle count while preserving the surface.")
                 }
                 Section("Shape") {
                     LabeledSlider(title: "Thickness", value: $model.editingOptions.thickness, range: 0.25...3, step: 0.05,

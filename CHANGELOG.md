@@ -15,6 +15,7 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ### Changed
 
+- Mesh Detail is a standalone control pinned above the scrolling settings. Its slider spans 6–64, with Draft, Low, Balanced, and High presets; App Settings uses the same range.
 - View menu commands provide camera controls and discrete orbit actions. Export cancellation supports Escape and Command-period, and icon removal is available from the menu and list keyboard handling.
 - The window supports a smaller minimum size, long destination names have bounded width, and single-icon exports avoid a redundant selected-item button. Camera inertia respects Reduce Motion.
 - Detail and Optimize Mesh appear first in the main settings panel, with Low, Balanced, and High detail presets. Intersection blending and fill depth are exposed in their regular sections; only unit calibration remains collapsed.

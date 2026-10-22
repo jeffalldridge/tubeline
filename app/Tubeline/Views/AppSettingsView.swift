@@ -7,7 +7,9 @@ struct AppSettingsView: View {
         @Bindable var model = model
         Form {
             Section("Default Mesh") {
-                MeshControls(detail: $model.startupOptions.facets, optimize: $model.startupOptions.optimize)
+                MeshControls(detail: $model.startupOptions.facets)
+                Toggle("Optimize Mesh", isOn: $model.startupOptions.optimize)
+                    .help("Reduce triangle count while preserving the surface.")
                 Text("Saved automatically for new sessions. Choose Restore Saved Defaults to apply them to the current batch.")
                     .font(.caption).foregroundStyle(.secondary)
             }
