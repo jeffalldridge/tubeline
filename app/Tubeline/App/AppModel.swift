@@ -5,6 +5,7 @@ import TubelineCore
 
 @Observable
 final class AppModel {
+    var cameraRequest = PreviewCameraRequest()
     static let shared = AppModel()
 
     enum Destination: String, CaseIterable { case besideOriginal, folder }

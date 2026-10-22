@@ -19,6 +19,9 @@ struct FileList: View {
                     }
             }
         }
+        .onDeleteCommand {
+            if let job = model.selectedJob { model.remove(job) }
+        }
         .overlay {
             if model.jobs.isEmpty { Text("No Icons Yet").foregroundStyle(.tertiary) }
         }
@@ -28,7 +31,7 @@ struct FileList: View {
                     Text(model.jobs.count == 1 ? "1 icon" : "\(model.jobs.count) icons")
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Clear") { model.clear() }.disabled(model.isExporting)
+                    Button("Clear List") { model.clear() }.disabled(model.isExporting)
                 }
                 .font(.callout).padding(12)
             }

@@ -9,7 +9,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             NavigationSplitView {
                 FileList()
-                    .navigationSplitViewColumnWidth(min: 230, ideal: 260, max: 340)
+                    .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 340)
             } detail: {
                 HStack(spacing: 0) {
                     PreviewPane()

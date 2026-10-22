@@ -16,6 +16,8 @@ struct ExportBar: View {
                         .font(.callout.monospacedDigit())
                     Spacer()
                     Button("Cancel Export") { model.cancelExports() }
+                        .keyboardShortcut(.cancelAction)
+                        .help("Stop unfinished exports (Escape or Command-period). Completed files are kept.")
                 }
             } else if let summary = model.exportSummary {
                 HStack {
@@ -42,17 +44,19 @@ struct ExportBar: View {
                             .lineLimit(1).truncationMode(.middle)
                     }
                     .help(model.folder?.path ?? "Choose an output folder.")
+                    .frame(maxWidth: 180)
                     .disabled(model.isExporting)
                 }
                 Spacer(minLength: 8)
                 if model.selectedJob?.exportedURL != nil {
                     Button("Show in Finder") { model.revealSelectedExport() }
                 }
-                Button("Export Selected") { model.exportSelected() }
-                    .disabled(model.selectedJob == nil || model.isExporting || (model.destination == .folder && model.folder == nil))
+                if model.jobs.count > 1 {
+                    Button("Export Selected") { model.exportSelected() }
+                        .disabled(model.selectedJob == nil || model.isExporting || (model.destination == .folder && model.folder == nil))
+                }
                 Button(exportTitle) { model.exportAll() }
                     .buttonStyle(.borderedProminent)
-                    .keyboardShortcut("e", modifiers: .command)
                     .disabled(model.jobs.isEmpty || model.isExporting || (model.destination == .folder && model.folder == nil))
             }
             Text("Existing files are kept. New exports receive a unique name when needed.")

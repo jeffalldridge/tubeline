@@ -13,6 +13,12 @@ final class PreviewSCNView: SCNView {
               let camera = scene.rootNode.childNode(withName: PreviewScene.cameraName, recursively: false) else { return }
         let orientation = (pointOfView ?? camera).simdWorldOrientation
         defaultCameraController.stopInertia()
+        if let delta = mode.orbitDelta {
+            defaultCameraController.pointOfView = pointOfView ?? camera
+            defaultCameraController.rotateBy(x: delta.x, y: delta.y)
+            needsDisplay = true
+            return
+        }
         let cameraControlEnabled = allowsCameraControl
         allowsCameraControl = false
         defaultCameraController.pointOfView = nil

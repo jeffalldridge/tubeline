@@ -7,6 +7,7 @@ struct ModelPreview: NSViewRepresentable {
     var subject: UUID?
     var showForm: Bool
     var cameraRequest: PreviewCameraRequest
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var renderingError: String?
 
     func makeNSView(context: Context) -> PreviewSCNView {
@@ -16,7 +17,7 @@ struct ModelPreview: NSViewRepresentable {
         view.antialiasingMode = .multisampling4X
         view.backgroundColor = NSColor(calibratedWhite: 0.16, alpha: 1)
         view.defaultCameraController.interactionMode = .orbitTurntable
-        view.defaultCameraController.inertiaEnabled = true
+        view.defaultCameraController.inertiaEnabled = !reduceMotion
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.image)
         view.setAccessibilityLabel("3D Model Preview")
@@ -26,6 +27,8 @@ struct ModelPreview: NSViewRepresentable {
 
     func updateNSView(_ view: PreviewSCNView, context: Context) {
         let coordinator = context.coordinator
+        view.defaultCameraController.inertiaEnabled = !reduceMotion
+        if reduceMotion { view.defaultCameraController.stopInertia() }
         view.setAccessibilityValue(url == nil ? "No model displayed" : (showForm ? "Shaded inspection preview" : "Export material preview"))
         let sameSubject = coordinator.subject == subject
         if !sameSubject { coordinator.cameraTransform = nil }
@@ -59,7 +62,7 @@ struct ModelPreview: NSViewRepresentable {
                     let (lo, hi) = scene.rootNode.boundingBox
                     view.defaultCameraController.target = SCNVector3((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2)
                     view.needsLayout = true
-                    view.setAccessibilityHelp(nil)
+                    view.setAccessibilityHelp("Use the View menu or Fit, Front, and Reset View buttons. Drag to orbit the model.")
                     Task { @MainActor in
                         guard coordinator.loadedKey == key else { return }
                         renderingError = nil
