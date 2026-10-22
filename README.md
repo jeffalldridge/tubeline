@@ -54,6 +54,8 @@ xcodegen generate
 open Tubeline.xcodeproj          # Run the Tubeline scheme; ⌘U runs the tests.
 ```
 
+The project signs with the Tent Studios team. To build it yourself, choose your own team under Signing & Capabilities, or run the tests unsigned as described in [Contributing to Tubeline](CONTRIBUTING.md).
+
 The geometry engine is the `TubelineCore` Swift package at the root of the repository. The app and the command-line tool both use it:
 
 ```bash
