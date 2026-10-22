@@ -12,7 +12,9 @@ let package = Package(
         .executable(name: "tubeline", targets: ["tubeline"]),
     ],
     targets: [
-        .target(name: "TubelineCore"),
+        // The mesher is hot numeric code; even Debug builds of the app need it optimized or
+        // previews crawl. (unsafeFlags are allowed for this local, root package.)
+        .target(name: "TubelineCore", swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         .executableTarget(name: "tubeline", dependencies: ["TubelineCore"]),
     ],
     swiftLanguageModes: [.v5]

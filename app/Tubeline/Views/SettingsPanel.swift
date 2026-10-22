@@ -13,7 +13,9 @@ struct SettingsPanel: View {
                               help: "Tube diameter as a multiple of the SVG stroke width")
                 LabeledSlider(title: "Facets", value: $model.options.facets, range: 12...96, step: 2,
                               format: { "\(Int($0))" },
-                              help: "Roughly how many flat sides go around each tube. More is smoother and heavier.")
+                              help: "How many flat sides go around each tube. More is smoother and heavier; shading stays round either way.")
+                Toggle("Optimize mesh", isOn: $model.options.optimize)
+                    .help("Collapses straight runs and flat faces into large triangles while staying within one facet of the exact shape. Much lighter in Motion.")
                 Picker("Ends", selection: $model.options.caps) {
                     Text("From SVG").tag(ConversionOptions.Caps.svg)
                     Text("Round").tag(ConversionOptions.Caps.round)

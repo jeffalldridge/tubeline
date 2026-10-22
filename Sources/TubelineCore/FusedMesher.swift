@@ -108,23 +108,90 @@ final class SlabRegion {
         }
     }
 
-    /// Signed distance from `p` to the filled area's outline in the plane (negative inside).
+    // Acceleration: outline edges bucketed on a 2D grid (for distance) and by horizontal band
+    // (for the winding number). Distances only need to be exact within `band` of the outline;
+    // farther away a clamped value gives identical surfaces.
+    private var band = Double.infinity
+    private var cell = 1.0
+    private var origin = Vec2.zero
+    private var gx = 0, gy = 0
+    private var grid: [[Int32]] = []
+    private var rows: [[Int32]] = []
+
+    /// Builds the lookup grids. `band` must cover the slab's rounding plus the meshing margin.
+    func prepare(band: Double) {
+        guard !edges.isEmpty, band.isFinite, band > 0 else { return }
+        self.band = band
+        let lo = Vec2(bounds.min.x, bounds.min.y) - band, hi = Vec2(bounds.max.x, bounds.max.y) + band
+        cell = band
+        origin = lo
+        gx = max(1, Int(ceil((hi.x - lo.x) / cell)))
+        gy = max(1, Int(ceil((hi.y - lo.y) / cell)))
+        grid = [[Int32]](repeating: [], count: gx * gy)
+        rows = [[Int32]](repeating: [], count: gy)
+        for (e, (a, b)) in edges.enumerated() {
+            let i0 = cellX(min(a.x, b.x)), i1 = cellX(max(a.x, b.x))
+            let j0 = cellY(min(a.y, b.y)), j1 = cellY(max(a.y, b.y))
+            for j in j0...j1 {
+                rows[j].append(Int32(e))
+                for i in i0...i1 { grid[i + gx * j].append(Int32(e)) }
+            }
+        }
+    }
+
+    private func cellX(_ x: Double) -> Int { min(gx - 1, max(0, Int(floor((x - origin.x) / cell)))) }
+    private func cellY(_ y: Double) -> Int { min(gy - 1, max(0, Int(floor((y - origin.y) / cell)))) }
+
+    /// Signed distance from `p` to the filled area's outline in the plane (negative inside),
+    /// exact within `band` and clamped to ±band beyond it.
     func planarDistance(_ p: Vec2) -> Double {
+        guard !grid.isEmpty else { return bruteForceDistance(p) }
+        let ci = Int(floor((p.x - origin.x) / cell)), cj = Int(floor((p.y - origin.y) / cell))
+        // Winding number from the edges crossing this point's horizontal band only.
+        var winding = 0
+        if cj >= 0 && cj < gy {
+            for e in rows[cj] { winding += crossing(edges[Int(e)], p) }
+        }
+        let inside = evenOdd ? (winding & 1) != 0 : winding != 0
+        var best = band * band
+        for j in max(0, cj - 1)...min(gy - 1, cj + 1) where cj + 1 >= 0 && cj - 1 < gy {
+            for i in max(0, ci - 1)...min(gx - 1, ci + 1) where ci + 1 >= 0 && ci - 1 < gx {
+                for e in grid[i + gx * j] {
+                    let (a, b) = edges[Int(e)]
+                    let ba = b - a, pa = p - a
+                    let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
+                    best = min(best, simd_length_squared(pa - ba * h))
+                }
+            }
+        }
+        let d = best.squareRoot()
+        return inside ? -d : d
+    }
+
+    private func bruteForceDistance(_ p: Vec2) -> Double {
         var winding = 0
         var best = Double.infinity
-        for (a, b) in edges {
+        for edge in edges {
+            let (a, b) = edge
             let ba = b - a, pa = p - a
             let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
             best = min(best, simd_length_squared(pa - ba * h))
-            // Winding number via upward/downward crossings of a ray towards +x.
-            if a.y <= p.y {
-                if b.y > p.y && cross(ba, pa) > 0 { winding += 1 }
-            } else if b.y <= p.y && cross(ba, pa) < 0 {
-                winding -= 1
-            }
+            winding += crossing(edge, p)
         }
         let inside = evenOdd ? (winding & 1) != 0 : winding != 0
         return inside ? -best.squareRoot() : best.squareRoot()
+    }
+
+    /// Signed crossing of a ray from `p` towards +x (winding number contribution).
+    @inline(__always) private func crossing(_ edge: (Vec2, Vec2), _ p: Vec2) -> Int {
+        let (a, b) = edge
+        let ba = b - a, pa = p - a
+        if a.y <= p.y {
+            if b.y > p.y && cross(ba, pa) > 0 { return 1 }
+        } else if b.y <= p.y && cross(ba, pa) < 0 {
+            return -1
+        }
+        return 0
     }
 
     private func cross(_ u: Vec2, _ v: Vec2) -> Double { u.x * v.y - u.y * v.x }
@@ -150,6 +217,8 @@ struct FusedMesher {
     var voxel: Double
     /// Smooth-union radius between groups (0 = crisp intersection).
     var blend: Double
+    /// Maximum distance between the simplified mesh and the exact surface; 0 skips simplification.
+    var tolerance: Double = 0
 
     func smin(_ a: Double, _ b: Double) -> Double {
         guard blend > 0 else { return min(a, b) }
@@ -158,77 +227,52 @@ struct FusedMesher {
     }
 
     func build() -> Mesh {
+        var clock = Date()
+        func lap(_ name: String) {
+            if ProcessInfo.processInfo.environment["TL_PROFILE"] != nil {
+                print(String(format: "  %@: %.3fs", name, Date().timeIntervalSince(clock)))
+            }
+            clock = Date()
+        }
         var total = Box3()
         for g in groups { total.include(g.bounds) }
         guard !total.isEmpty else { return Mesh() }
 
         let h = voxel
         let pad = 2 * h + blend
+        for g in groups {
+            for case let .slab(s) in g.primitives {
+                let rounding: Double = switch s.profile {
+                case .rounded(let r): r
+                case .extruded(let hd, _): hd
+                }
+                s.prepare(band: rounding + 2 * pad + tolerance)
+            }
+        }
         let origin = total.min - Vec3(repeating: pad)
         let span = total.size + Vec3(repeating: 2 * pad)
         let nx = Int(ceil(span.x / h)) + 1, ny = Int(ceil(span.y / h)) + 1, nz = Int(ceil(span.z / h)) + 1
         let far = Float(1e9)
         var field = [Float](repeating: far, count: nx * ny * nz)
 
-        func gridRange(_ lo: Double, _ hi: Double, _ o: Double, _ n: Int) -> ClosedRange<Int> {
-            let a = max(0, Int(floor((lo - o) / h)))
-            let b = min(n - 1, Int(ceil((hi - o) / h)))
-            return a...max(a, b)
-        }
 
-        // 1. Sample: per group take the min of its primitives near their bounds, then blend into the field.
-        for group in groups {
-            let gb = group.bounds.expanded(by: pad)
-            let ri = gridRange(gb.min.x, gb.max.x, origin.x, nx)
-            let rj = gridRange(gb.min.y, gb.max.y, origin.y, ny)
-            let rk = gridRange(gb.min.z, gb.max.z, origin.z, nz)
-            let lx = ri.count, ly = rj.count
-            var local = [Float](repeating: far, count: lx * ly * rk.count)
-
-            for prim in group.primitives {
-                let pb = prim.bounds.expanded(by: pad)
-                let pi = gridRange(pb.min.x, pb.max.x, origin.x, nx).clamped(to: ri)
-                let pj = gridRange(pb.min.y, pb.max.y, origin.y, ny).clamped(to: rj)
-                let pk = gridRange(pb.min.z, pb.max.z, origin.z, nz).clamped(to: rk)
-                if case let .slab(s) = prim {
-                    // The planar distance is shared by every z sample in a column.
-                    for j in pj {
-                        for i in pi {
-                            let dxy = s.planarDistance(Vec2(origin.x + Double(i) * h, origin.y + Double(j) * h))
-                            for k in pk {
-                                let d = Float(s.distance(planar: dxy, z: origin.z + Double(k) * h))
-                                let li = (i - ri.lowerBound) + lx * ((j - rj.lowerBound) + ly * (k - rk.lowerBound))
-                                if d < local[li] { local[li] = d }
-                            }
-                        }
-                    }
-                    continue
-                }
-                for k in pk {
-                    for j in pj {
-                        for i in pi {
-                            let p = origin + Vec3(Double(i), Double(j), Double(k)) * h
-                            let d = Float(prim.distance(p))
-                            let li = (i - ri.lowerBound) + lx * ((j - rj.lowerBound) + ly * (k - rk.lowerBound))
-                            if d < local[li] { local[li] = d }
-                        }
-                    }
-                }
-            }
-            for k in rk {
-                for j in rj {
-                    for i in ri {
-                        let li = (i - ri.lowerBound) + lx * ((j - rj.lowerBound) + ly * (k - rk.lowerBound))
-                        let gi = i + nx * (j + ny * k)
-                        let a = field[gi], b = local[li]
-                        field[gi] = (a >= far || b >= far) ? min(a, b) : Float(smin(Double(a), Double(b)))
-                    }
+        // 1. Sample the exact distance on the grid, rows in parallel. The same lookup later snaps
+        // vertices and checks simplification, so every stage sees one consistent surface.
+        let lookup = SpatialLookup(groups: groups, cell: 2 * h, pad: pad + tolerance, blend: blend)
+        field.withUnsafeMutableBufferPointer { field in
+            DispatchQueue.concurrentPerform(iterations: ny * nz) { row in
+                let j = row % ny, k = row / ny
+                let y = origin.y + Double(j) * h, z = origin.z + Double(k) * h
+                let base = nx * (j + ny * k)
+                for i in 0..<nx {
+                    let d = lookup.distance(Vec3(origin.x + Double(i) * h, y, z))
+                    field[base + i] = d >= 1e9 ? far : Float(d)
                 }
             }
         }
-
+        lap("sample \(nx)×\(ny)×\(nz)")
         // 2. Surface nets: one vertex per cell that straddles the surface.
-        let lookup = SpatialLookup(groups: groups, cell: max(4 * h, total.size.z), pad: pad)
+        lap("lookup")
         let cx = nx - 1, cy = ny - 1, cz = nz - 1
         var cellVertex = [Int32](repeating: -1, count: cx * cy * cz)
         var mesh = Mesh()
@@ -236,55 +280,71 @@ struct FusedMesher {
         let corners: [SIMD3<Int>] = [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]]
         let cubeEdges: [(Int, Int)] = [(0,1),(2,3),(4,5),(6,7),(0,2),(1,3),(4,6),(5,7),(0,4),(1,5),(2,6),(3,7)]
 
-        for k in 0..<cz {
-            for j in 0..<cy {
-                for i in 0..<cx {
-                    // A distance field can't change sign within a cell when a corner is farther than the cell diagonal.
-                    if abs(field[i + nx * (j + ny * k)]) > Float(1.8 * h) { continue }
+        // Cells are independent, so rows are contoured in parallel and merged in order afterwards.
+        struct CellVertex { var cell: Int; var p: Vec3; var n: Vec3; var crease: Bool }
+        var rows = [[CellVertex]](repeating: [], count: cy)
+        field.withUnsafeBufferPointer { field in
+            rows.withUnsafeMutableBufferPointer { rows in
+                DispatchQueue.concurrentPerform(iterations: cy) { j in
+                    var out: [CellVertex] = []
                     var v = [Float](repeating: 0, count: 8)
-                    var mask = 0
-                    for c in 0..<8 {
-                        let o = corners[c]
-                        v[c] = field[(i + o.x) + nx * ((j + o.y) + ny * (k + o.z))]
-                        if v[c] < 0 { mask |= 1 << c }
-                    }
-                    guard mask != 0 && mask != 255 else { continue }
-                    // Dual contouring: find where each crossing edge meets the exact surface and its
-                    // normal there, then place the vertex where those tangent planes agree. This puts
-                    // vertices on creases, so hard intersections and flat cap rims stay sharp.
-                    let cellMin = origin + Vec3(Double(i), Double(j), Double(k)) * h
-                    var mass = Vec3.zero
-                    var ata = simd_double3x3(0)
-                    var atb = Vec3.zero
-                    var nsum = Vec3.zero
                     var normals: [Vec3] = []
-                    var count = 0.0
-                    for (a, b) in cubeEdges where (v[a] < 0) != (v[b] < 0) {
-                        let pa = cellMin + SIMD3<Double>(corners[a]) * h
-                        let pb = cellMin + SIMD3<Double>(corners[b]) * h
-                        let q = lookup.edgeCrossing(pa, pb, Double(v[a]), Double(v[b]), smin: smin)
-                        let n = lookup.gradient(q, eps: h * 0.02, smin: smin)
-                        ata += simd_double3x3(rows: [n * n.x, n * n.y, n * n.z])
-                        atb += n * simd_dot(n, q)
-                        mass += q
-                        nsum += n
-                        normals.append(n)
-                        count += 1
+                    normals.reserveCapacity(12)
+                    for k in 0..<cz {
+                        for i in 0..<cx {
+                            // A distance field can't change sign within a cell when a corner is farther than the cell diagonal.
+                            if abs(field[i + nx * (j + ny * k)]) > Float(1.8 * h) { continue }
+                            var mask = 0
+                            for c in 0..<8 {
+                                let o = corners[c]
+                                v[c] = field[(i + o.x) + nx * ((j + o.y) + ny * (k + o.z))]
+                                if v[c] < 0 { mask |= 1 << c }
+                            }
+                            guard mask != 0 && mask != 255 else { continue }
+                            // Dual contouring: find where each crossing edge meets the exact surface and its
+                            // normal there, then place the vertex where those tangent planes agree. This puts
+                            // vertices on creases, so hard intersections and flat cap rims stay sharp.
+                            let cellMin = origin + Vec3(Double(i), Double(j), Double(k)) * h
+                            var mass = Vec3.zero
+                            var ata = simd_double3x3(0)
+                            var atb = Vec3.zero
+                            var nsum = Vec3.zero
+                            normals.removeAll(keepingCapacity: true)
+                            for (a, b) in cubeEdges where (v[a] < 0) != (v[b] < 0) {
+                                let pa = cellMin + SIMD3<Double>(corners[a]) * h
+                                let pb = cellMin + SIMD3<Double>(corners[b]) * h
+                                let q = lookup.edgeCrossing(pa, pb, Double(v[a]), Double(v[b]))
+                                let n = lookup.gradient(q, eps: h * 0.02)
+                                ata += simd_double3x3(rows: [n * n.x, n * n.y, n * n.z])
+                                atb += n * simd_dot(n, q)
+                                mass += q
+                                nsum += n
+                                normals.append(n)
+                            }
+                            mass /= Double(normals.count)
+                            var p = mass + solveQEF(ata, atb - ata * mass)
+                            let lo = cellMin - Vec3(repeating: 0.25 * h), hi = cellMin + Vec3(repeating: 1.25 * h)
+                            if any(p .< lo) || any(p .> hi) { p = mass }
+                            let nrm = simd_length(nsum) > 1e-9 ? simd_normalize(nsum) : lookup.gradient(p, eps: h * 0.05)
+                            // A crease cell sees surface normals pointing in clearly different directions.
+                            let crease = normals.contains { simd_dot($0, nrm) < 0.9 }
+                            out.append(CellVertex(cell: i + cx * (j + cy * k), p: p, n: nrm, crease: crease))
+                        }
                     }
-                    mass /= count
-                    var p = mass + solveQEF(ata, atb - ata * mass)
-                    let lo = cellMin - Vec3(repeating: 0.25 * h), hi = cellMin + Vec3(repeating: 1.25 * h)
-                    if any(p .< lo) || any(p .> hi) { p = mass }
-                    let nrm = simd_length(nsum) > 1e-9 ? simd_normalize(nsum) : lookup.gradient(p, eps: h * 0.05, smin: smin)
-                    // A crease cell sees surface normals pointing in clearly different directions.
-                    if normals.contains(where: { simd_dot($0, nrm) < 0.9 }) { creases.insert(mesh.positions.count) }
-                    cellVertex[i + cx * (j + cy * k)] = Int32(mesh.positions.count)
-                    mesh.positions.append(SIMD3<Float>(p))
-                    mesh.normals.append(SIMD3<Float>(nrm))
+                    rows[j] = out
                 }
             }
         }
+        for row in rows {
+            for cv in row {
+                if cv.crease { creases.insert(mesh.positions.count) }
+                cellVertex[cv.cell] = Int32(mesh.positions.count)
+                mesh.positions.append(SIMD3<Float>(cv.p))
+                mesh.normals.append(SIMD3<Float>(cv.n))
+            }
+        }
 
+        lap("dual contour")
         // 3. Faces: every grid edge that crosses the surface becomes a quad joining the 4 cells around it.
         func cellIndex(_ i: Int, _ j: Int, _ k: Int) -> Int32 {
             guard i >= 0, j >= 0, k >= 0, i < cx, j < cy, k < cz else { return -1 }
@@ -321,23 +381,156 @@ struct FusedMesher {
                 }
             }
         }
-        splitCreaseNormals(&mesh, creases: creases, lookup: lookup)
+        lap("faces \(mesh.triangleCount) tris")
+        if tolerance > 0 {
+            mesh = simplify(mesh, creases: creases, lookup: lookup)
+            lap("simplify")
+        } else {
+            splitCreaseNormals(&mesh, creases: creases, lookup: lookup)
+        }
+        mesh.optimizeForGPU()
         return mesh
     }
 
-    /// Gives crease vertices a separate copy per triangle, shaded with the normal of the surface
-    /// that triangle lies on, so hard edges render hard instead of smeared.
-    private func splitCreaseNormals(_ mesh: inout Mesh, creases: Set<Int>, lookup: SpatialLookup) {
-        guard !creases.isEmpty else { return }
+    /// Collapses the dense grid mesh down to what the shape needs, then rebuilds normals from
+    /// the exact surface so a lighter tube still shades perfectly round.
+    private func simplify(_ dense: Mesh, creases: Set<Int>, lookup: SpatialLookup) -> Mesh {
+        var tris: [SIMD3<Int32>] = []
+        tris.reserveCapacity(dense.triangleCount)
+        for t in stride(from: 0, to: dense.indices.count, by: 3) {
+            let tri = SIMD3<Int32>(Int32(dense.indices[t]), Int32(dense.indices[t + 1]), Int32(dense.indices[t + 2]))
+            if tri.x != tri.y && tri.y != tri.z && tri.x != tri.z { tris.append(tri) }
+        }
+        let crease = (0..<dense.positions.count).map { creases.contains($0) }
+        let positions = dense.positions.map { Vec3($0) }
+        let distance: (Vec3) -> Double = { lookup.distance($0) }
+        let profile = ProcessInfo.processInfo.environment["TL_PROFILE"] != nil
+        let t0 = Date()
+
+        // Pass 1: simplify tiles in parallel, with vertices on tile borders locked so neighbors
+        // stay stitched. Pass 2 then simplifies the whole mesh, mostly just the seams.
+        let (tp, tt, tc) = simplifyTiles(positions: positions, triangles: tris, crease: crease, distance: distance)
+        if profile { print(String(format: "  tiles: %.3fs → %d tris", Date().timeIntervalSince(t0), tt.count)) }
+        var d = Decimator(positions: tp, triangles: tt, crease: tc, maxError: tolerance, distance: distance)
+        d.run()
+        if profile { print(String(format: "  decimate: %.3fs", Date().timeIntervalSince(t0))) }
+        let (pos, out, _, _) = d.output()
+
+        var mesh = Mesh()
+        mesh.positions = pos.map { SIMD3<Float>($0) }
+        mesh.normals = pos.map { SIMD3<Float>(lookup.gradient($0, eps: voxel * 0.02)) }
+        mesh.indices = out.flatMap { [UInt32($0.x), UInt32($0.y), UInt32($0.z)] }
+        splitCreaseNormals(&mesh, creases: nil, lookup: lookup)
+        return mesh
+    }
+
+    private func simplifyTiles(positions: [Vec3], triangles: [SIMD3<Int32>], crease: [Bool],
+                               distance: @escaping (Vec3) -> Double) -> ([Vec3], [SIMD3<Int32>], [Bool]) {
+        let grid = triangles.count > 20_000 ? 6 : 1
+        guard grid > 1 else { return (positions, triangles, crease) }
+        var lo = Vec2(repeating: .infinity), hi = Vec2(repeating: -.infinity)
+        for p in positions { lo = simd_min(lo, Vec2(p.x, p.y)); hi = simd_max(hi, Vec2(p.x, p.y)) }
+        let span = simd_max(hi - lo, Vec2(repeating: 1e-9))
+
+        // Assign each triangle to a tile by centroid; a vertex used by two tiles is a border vertex.
+        var tileOf = [Int](repeating: 0, count: triangles.count)
+        var vertexTile = [Int](repeating: -1, count: positions.count)
+        var border = [Bool](repeating: false, count: positions.count)
+        for (t, tri) in triangles.enumerated() {
+            let c = (positions[Int(tri.x)] + positions[Int(tri.y)] + positions[Int(tri.z)]) / 3
+            let tx = min(grid - 1, Int((c.x - lo.x) / span.x * Double(grid)))
+            let ty = min(grid - 1, Int((c.y - lo.y) / span.y * Double(grid)))
+            let tile = tx + grid * ty
+            tileOf[t] = tile
+            for k in 0..<3 {
+                let v = Int(tri[k])
+                if vertexTile[v] == -1 { vertexTile[v] = tile } else if vertexTile[v] != tile { border[v] = true }
+            }
+        }
+
+        struct TileResult { var positions: [Vec3] = []; var triangles: [SIMD3<Int32>] = []; var crease: [Bool] = []; var global: [Int] = [] }
+        var results = [TileResult](repeating: TileResult(), count: grid * grid)
+        var tileTris = [[Int]](repeating: [], count: grid * grid)
+        for (t, tile) in tileOf.enumerated() { tileTris[tile].append(t) }
+
+        results.withUnsafeMutableBufferPointer { results in
+            DispatchQueue.concurrentPerform(iterations: grid * grid) { tile in
+                var local: [Int: Int32] = [:]
+                var globalOf: [Int] = []
+                var lt: [SIMD3<Int32>] = []
+                for t in tileTris[tile] {
+                    var out = SIMD3<Int32>()
+                    for k in 0..<3 {
+                        let v = Int(triangles[t][k])
+                        if let l = local[v] { out[k] = l } else {
+                            let l = Int32(globalOf.count)
+                            local[v] = l
+                            globalOf.append(v)
+                            out[k] = l
+                        }
+                    }
+                    lt.append(out)
+                }
+                guard !lt.isEmpty else { return }
+                var d = Decimator(positions: globalOf.map { positions[$0] }, triangles: lt,
+                                  crease: globalOf.map { crease[$0] }, locked: globalOf.map { border[$0] },
+                                  maxError: tolerance, distance: distance)
+                d.run()
+                let (p, tr, cr, src) = d.output()
+                results[tile] = TileResult(positions: p, triangles: tr, crease: cr, global: src.map { globalOf[$0] })
+            }
+        }
+
+        // Merge: border vertices are shared by global index; interior vertices are new.
+        var pos: [Vec3] = [], cr: [Bool] = [], tris: [SIMD3<Int32>] = []
+        var borderIndex: [Int: Int32] = [:]
+        for r in results {
+            var remap = [Int32](repeating: 0, count: r.positions.count)
+            for i in r.positions.indices {
+                let g = r.global[i]
+                if border[g], let existing = borderIndex[g] {
+                    remap[i] = existing
+                    continue
+                }
+                remap[i] = Int32(pos.count)
+                if border[g] { borderIndex[g] = Int32(pos.count) }
+                pos.append(r.positions[i]); cr.append(r.crease[i])
+            }
+            for t in r.triangles { tris.append(SIMD3(remap[Int(t.x)], remap[Int(t.y)], remap[Int(t.z)])) }
+        }
+        return (pos, tris, cr)
+    }
+
+    /// Gives vertices on a crease a separate copy per side, shaded with the normal of the surface
+    /// that side lies on, so hard edges render hard instead of smeared. When `creases` is nil every
+    /// vertex is tested by probing the exact surface a short step into each adjacent triangle.
+    private func splitCreaseNormals(_ mesh: inout Mesh, creases: Set<Int>?, lookup: SpatialLookup) {
+        let eps = voxel * 0.02
+        var copies: [Int: [(normal: SIMD3<Float>, index: UInt32)]] = [:]
         for t in stride(from: 0, to: mesh.indices.count, by: 3) {
             let tri = (0..<3).map { Int(mesh.indices[t + $0]) }
-            guard tri.contains(where: creases.contains) else { continue }
+            if let creases, !tri.contains(where: creases.contains) { continue }
             let c = tri.reduce(SIMD3<Float>.zero) { $0 + mesh.positions[$1] } / 3
-            let n = SIMD3<Float>(lookup.gradient(Vec3(c), eps: voxel * 0.02, smin: smin))
-            for k in 0..<3 where creases.contains(tri[k]) {
-                mesh.indices[t + k] = UInt32(mesh.positions.count)
-                mesh.positions.append(mesh.positions[tri[k]])
+            for k in 0..<3 {
+                let v = tri[k]
+                if let creases, !creases.contains(v) { continue }
+                let p = Vec3(mesh.positions[v])
+                // Step a little way into the triangle so the gradient picks this side of a crease.
+                let toward = Vec3(c) - p
+                let len = simd_length(toward)
+                let probe = len > 1e-12 ? p + toward / len * min(len * 0.5, voxel * 0.5) : p
+                let n = SIMD3<Float>(lookup.gradient(probe, eps: eps))
+                // Smooth here: keep the shared vertex and its exact normal.
+                if simd_dot(n, mesh.normals[v]) > 0.97 { continue }
+                if let existing = copies[v]?.first(where: { simd_dot($0.normal, n) > 0.97 }) {
+                    mesh.indices[t + k] = existing.index
+                    continue
+                }
+                let idx = UInt32(mesh.positions.count)
+                mesh.positions.append(mesh.positions[v])
                 mesh.normals.append(n)
+                copies[v, default: []].append((n, idx))
+                mesh.indices[t + k] = idx
             }
         }
     }
@@ -372,61 +565,145 @@ func solveQEF(_ a: simd_double3x3, _ b: Vec3) -> Vec3 {
     return v * inv * v.transpose * b
 }
 
-/// Uniform 2D bucket grid (icons are flat) for evaluating the exact distance near a point.
+/// Exact distance to the whole icon near a point, for snapping vertices and checking
+/// simplification. Data is flattened into plain arrays (no nested arrays, no class references
+/// on the hot path) because it is queried millions of times from many threads at once.
 struct SpatialLookup {
-    let groups: [PrimitiveGroup]
-    let cell: Double
-    let origin: Vec2
-    let nx: Int, ny: Int
-    /// Per bucket: (group, primitive) pairs, sorted by group.
-    var buckets: [[(Int, Int)]]
+    private struct Flat {
+        enum Kind: UInt8 { case capsule, cylinder, sphere, slab }
+        var kind: Kind
+        var group: Int32
+        var slab: Int32
+        var a: Vec3
+        var b: Vec3
+        var r: Double
+    }
 
-    init(groups: [PrimitiveGroup], cell: Double, pad: Double) {
-        self.groups = groups
+    private let prims: [Flat]
+    private let slabs: [SlabRegion]
+    private let slabRefs: [Unmanaged<SlabRegion>]
+    private let cell: Double
+    private let origin: Vec2
+    private let nx: Int, ny: Int
+    /// Bucket b holds bucketItems[bucketStart[b] ..< bucketStart[b + 1]], sorted by group.
+    private let bucketStart: [Int32]
+    private let bucketItems: [Int32]
+    private let blend: Double
+
+    init(groups: [PrimitiveGroup], cell: Double, pad: Double, blend: Double) {
         self.cell = cell
+        self.blend = blend
+        var flat: [Flat] = []
+        var slabs: [SlabRegion] = []
+        var bounds: [Box3] = []
+        for (gi, g) in groups.enumerated() {
+            for p in g.primitives {
+                switch p {
+                case let .capsule(a, b, r): flat.append(Flat(kind: .capsule, group: Int32(gi), slab: -1, a: a, b: b, r: r))
+                case let .cylinder(a, b, r): flat.append(Flat(kind: .cylinder, group: Int32(gi), slab: -1, a: a, b: b, r: r))
+                case let .sphere(c, r): flat.append(Flat(kind: .sphere, group: Int32(gi), slab: -1, a: c, b: c, r: r))
+                case let .slab(s):
+                    flat.append(Flat(kind: .slab, group: Int32(gi), slab: Int32(slabs.count), a: .zero, b: .zero, r: 0))
+                    slabs.append(s)
+                }
+                bounds.append(p.bounds.expanded(by: pad))
+            }
+        }
+        prims = flat
+        self.slabs = slabs
+        slabRefs = slabs.map { Unmanaged.passUnretained($0) }
+
         var total = Box3()
         for g in groups { total.include(g.bounds) }
         let o = Vec2(total.min.x, total.min.y) - Vec2(repeating: pad + cell)
         origin = o
-        nx = Int(ceil((total.size.x + 2 * (pad + cell)) / cell)) + 1
-        ny = Int(ceil((total.size.y + 2 * (pad + cell)) / cell)) + 1
-        var b = [[(Int, Int)]](repeating: [], count: nx * ny)
-        for (gi, g) in groups.enumerated() {
-            for (pi, p) in g.primitives.enumerated() {
-                let pb = p.bounds.expanded(by: pad)
-                let i0 = max(0, Int(floor((pb.min.x - o.x) / cell))), i1 = min(nx - 1, Int(floor((pb.max.x - o.x) / cell)))
-                let j0 = max(0, Int(floor((pb.min.y - o.y) / cell))), j1 = min(ny - 1, Int(floor((pb.max.y - o.y) / cell)))
-                guard i0 <= i1, j0 <= j1 else { continue }
-                for j in j0...j1 { for i in i0...i1 { b[i + nx * j].append((gi, pi)) } }
+        let nx = Int(ceil((total.size.x + 2 * (pad + cell)) / cell)) + 1
+        let ny = Int(ceil((total.size.y + 2 * (pad + cell)) / cell)) + 1
+        self.nx = nx
+        self.ny = ny
+
+        // Two passes: count per bucket, then fill (prims are already in group order).
+        var counts = [Int32](repeating: 0, count: nx * ny + 1)
+        func cells(_ b: Box3) -> (ClosedRange<Int>, ClosedRange<Int>)? {
+            let i0 = max(0, Int(floor((b.min.x - o.x) / cell))), i1 = min(nx - 1, Int(floor((b.max.x - o.x) / cell)))
+            let j0 = max(0, Int(floor((b.min.y - o.y) / cell))), j1 = min(ny - 1, Int(floor((b.max.y - o.y) / cell)))
+            return i0 <= i1 && j0 <= j1 ? (i0...i1, j0...j1) : nil
+        }
+        for b in bounds {
+            guard let (ri, rj) = cells(b) else { continue }
+            for j in rj { for i in ri { counts[i + nx * j + 1] += 1 } }
+        }
+        for k in 1..<counts.count { counts[k] += counts[k - 1] }
+        var items = [Int32](repeating: 0, count: Int(counts[counts.count - 1]))
+        var fill = counts
+        for (pi, b) in bounds.enumerated() {
+            guard let (ri, rj) = cells(b) else { continue }
+            for j in rj {
+                for i in ri {
+                    items[Int(fill[i + nx * j])] = Int32(pi)
+                    fill[i + nx * j] += 1
+                }
             }
         }
-        buckets = b
+        bucketStart = counts
+        bucketItems = items
     }
 
-    func distance(_ p: Vec3, smin: (Double, Double) -> Double) -> Double {
+    @inline(__always) private func smin(_ a: Double, _ b: Double) -> Double {
+        guard blend > 0 else { return min(a, b) }
+        let h = max(blend - abs(a - b), 0) / blend
+        return min(a, b) - h * h * blend * 0.25
+    }
+
+    @inline(__always) private func distance(_ f: Flat, _ p: Vec3) -> Double {
+        switch f.kind {
+        case .capsule:
+            let pa = p - f.a, ba = f.b - f.a
+            let h = simd_clamp(simd_dot(pa, ba) / max(simd_dot(ba, ba), 1e-30), 0, 1)
+            return simd_length(pa - ba * h) - f.r
+        case .sphere:
+            return simd_distance(p, f.a) - f.r
+        case .cylinder:
+            return Primitive.cylinder(f.a, f.b, f.r).distance(p)
+        case .slab:
+            return slabRefs[Int(f.slab)]._withUnsafeGuaranteedRef { s in
+                s.distance(planar: s.planarDistance(Vec2(p.x, p.y)), z: p.z)
+            }
+        }
+    }
+
+    func distance(_ p: Vec3) -> Double {
         let i = Int(floor((p.x - origin.x) / cell)), j = Int(floor((p.y - origin.y) / cell))
         guard i >= 0, j >= 0, i < nx, j < ny else { return 1e9 }
-        var result = Double.infinity
-        var groupMin = Double.infinity
-        var currentGroup = -1
-        for (g, pi) in buckets[i + nx * j] {
-            if g != currentGroup {
-                if currentGroup >= 0 { result = result.isInfinite ? groupMin : smin(result, groupMin) }
-                currentGroup = g
-                groupMin = .infinity
+        let b = i + nx * j
+        let lo = Int(bucketStart[b]), hi = Int(bucketStart[b + 1])
+        guard lo < hi else { return 1e9 }
+        return prims.withUnsafeBufferPointer { prims in
+            bucketItems.withUnsafeBufferPointer { items in
+                var result = Double.infinity
+                var groupMin = Double.infinity
+                var currentGroup: Int32 = -1
+                for k in lo..<hi {
+                    let f = prims[Int(items[k])]
+                    if f.group != currentGroup {
+                        if currentGroup >= 0 { result = result.isInfinite ? groupMin : smin(result, groupMin) }
+                        currentGroup = f.group
+                        groupMin = .infinity
+                    }
+                    groupMin = min(groupMin, distance(f, p))
+                }
+                result = result.isInfinite ? groupMin : smin(result, groupMin)
+                return result.isInfinite ? 1e9 : result
             }
-            groupMin = min(groupMin, groups[g].primitives[pi].distance(p))
         }
-        if currentGroup >= 0 { result = result.isInfinite ? groupMin : smin(result, groupMin) }
-        return result.isInfinite ? 1e9 : result
     }
 
     /// Point where the exact surface crosses the segment a→b (signs at the ends differ).
-    func edgeCrossing(_ a: Vec3, _ b: Vec3, _ da: Double, _ db: Double, smin: (Double, Double) -> Double) -> Vec3 {
+    func edgeCrossing(_ a: Vec3, _ b: Vec3, _ da: Double, _ db: Double) -> Vec3 {
         var lo = a, hi = b, dlo = da, dhi = db
         var p = a + (b - a) * (da / (da - db))
         for _ in 0..<6 {
-            let d = distance(p, smin: smin)
+            let d = distance(p)
             if abs(d) < 1e-7 { break }
             if (d < 0) == (dlo < 0) { lo = p; dlo = d } else { hi = p; dhi = d }
             let t = dlo / (dlo - dhi)
@@ -435,10 +712,10 @@ struct SpatialLookup {
         return p
     }
 
-    func gradient(_ p: Vec3, eps: Double, smin: (Double, Double) -> Double) -> Vec3 {
-        let dx = distance(p + Vec3(eps, 0, 0), smin: smin) - distance(p - Vec3(eps, 0, 0), smin: smin)
-        let dy = distance(p + Vec3(0, eps, 0), smin: smin) - distance(p - Vec3(0, eps, 0), smin: smin)
-        let dz = distance(p + Vec3(0, 0, eps), smin: smin) - distance(p - Vec3(0, 0, eps), smin: smin)
+    func gradient(_ p: Vec3, eps: Double) -> Vec3 {
+        let dx = distance(p + Vec3(eps, 0, 0)) - distance(p - Vec3(eps, 0, 0))
+        let dy = distance(p + Vec3(0, eps, 0)) - distance(p - Vec3(0, eps, 0))
+        let dz = distance(p + Vec3(0, 0, eps)) - distance(p - Vec3(0, 0, eps))
         let g = Vec3(dx, dy, dz)
         let len = simd_length(g)
         return len > 1e-12 ? g / len : Vec3(0, 0, 1)

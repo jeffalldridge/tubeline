@@ -1,4 +1,5 @@
 import XCTest
+import simd
 @testable import TubelineCore
 
 final class MeshingTests: XCTestCase {
@@ -7,8 +8,9 @@ final class MeshingTests: XCTestCase {
         return try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: options)
     }
 
-    /// Every edge of a closed surface is shared by exactly two triangles. Vertices are welded by
-    /// position first because crease vertices are duplicated for their split normals.
+    /// A closed surface has no boundary: every edge is shared by an even number of triangles
+    /// (2, or 4 at the rare pinch where dual contouring joins two sheets at a saddle). Vertices
+    /// are welded by position first because crease vertices are duplicated for split normals.
     private func assertWatertight(_ m: Mesh, file: StaticString = #filePath, line: UInt = #line) {
         var ids: [SIMD3<Float>: Int] = [:]
         let weld = m.positions.map { p in ids[p] ?? { ids[p] = ids.count; return ids.count - 1 }() }
@@ -21,8 +23,8 @@ final class MeshingTests: XCTestCase {
                 edges[SIMD2(min(a, b), max(a, b)), default: 0] += 1
             }
         }
-        let open = edges.values.filter { $0 != 2 }.count
-        XCTAssertEqual(open, 0, "\(open) of \(edges.count) edges are not shared by exactly two triangles", file: file, line: line)
+        let open = edges.values.filter { $0 % 2 != 0 }.count
+        XCTAssertEqual(open, 0, "\(open) of \(edges.count) edges are boundary edges (holes)", file: file, line: line)
     }
 
     func testCrossingStrokesFuseIntoOneWatertightSolid() throws {
@@ -63,6 +65,34 @@ final class MeshingTests: XCTestCase {
         o.facets = 64
         let fine = try mesh(##"<circle cx="12" cy="12" r="8"/>"##, options: o).triangleCount
         XCTAssertGreaterThan(fine, coarse * 4)
+    }
+
+    func testOptimizationIsLighterWatertightAndOnTheSurface() throws {
+        let body = ##"<path d="M4 4 20 20"/><path d="M20 4 4 20"/><circle cx="12" cy="12" r="8"/>"##
+        var o = ConversionOptions()
+        o.optimize = false
+        let dense = try mesh(body, options: o)
+        o.optimize = true
+        let light = try mesh(body, options: o)
+        XCTAssertLessThan(light.triangleCount * 3, dense.triangleCount)
+        assertWatertight(light)
+
+        // Every vertex stays on the exact tube surface: distance from the nearest centerline must
+        // be one tube radius. Simplified vertices are held to one facet's sag; dual contouring's
+        // crease vertices (where tubes meet) can sit up to ~2.5% of a radius off at concave seams, so allow 3%.
+        let s = 2.54 / 72  // cm per point
+        let r = 1 * s, sag = r * (1 - cos(.pi / o.facets))
+        for p in light.positions {
+            let q = SIMD2<Double>(Double(p.x), Double(p.y)) / s
+            func segment(_ a: SIMD2<Double>, _ b: SIMD2<Double>) -> Double {
+                let t = simd_clamp(simd_dot(q - a, b - a) / simd_length_squared(b - a), 0, 1)
+                return simd_distance(q, a + (b - a) * t)
+            }
+            let ring = abs(simd_length(q) - 8)
+            let axis = min(ring, segment([-8, -8], [8, 8]), segment([8, -8], [-8, 8])) * s
+            let dist = (axis * axis + Double(p.z) * Double(p.z)).squareRoot()
+            XCTAssertEqual(dist, r, accuracy: max(sag * 1.5, r * 0.03), "at \(q), z \(Double(p.z) / s) pt")
+        }
     }
 
     func testEmptyDocumentThrows() {

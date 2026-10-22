@@ -9,9 +9,10 @@ Turns stroked SVG icons into 3D tube models (.usdz) for Apple Motion.
 options:
   -o, --output <dir>      Write results here (default: next to each SVG)
   --thickness <x>         Tube diameter as a multiple of the stroke width (default 1)
-  --facets <n>            Sides around each tube, 12–96 (default 40)
+  --facets <n>            Sides around each tube, 12–96 (default 32)
   --fillet <x>            Rounding where strokes meet, 0–1 × tube radius (default 0 = crisp)
   --caps <c>              svg | round | flat (default svg)
+  --no-optimize           Keep the dense grid mesh (no simplification)
   --no-fills              Ignore filled shapes
   --fill-style <s>        Fills without an outline: extruded | rounded (default extruded)
   --depth <pt>            Extrusion depth for those fills, in artwork points (default 4)
@@ -42,10 +43,11 @@ while let a = args.popFirst() {
     case "-h", "--help": print(usage); exit(0)
     case "-o", "--output": outputDir = URL(fileURLWithPath: value(a))
     case "--thickness": options.thickness = Double(value(a)) ?? 1
-    case "--facets": options.facets = Double(value(a)) ?? 40
+    case "--facets": options.facets = Double(value(a)) ?? 32
     case "--fillet": options.fillet = Double(value(a)) ?? 0
     case "--caps": options.caps = .init(rawValue: value(a)) ?? .svg
     case "--no-fills": options.includeFills = false
+    case "--no-optimize": options.optimize = false
     case "--fill-style": options.fillStyle = .init(rawValue: value(a)) ?? .extruded
     case "--depth": options.extrudeDepth = Double(value(a)) ?? 4
     case "--edge-rounding": options.extrudeRounding = Double(value(a)) ?? 0.1

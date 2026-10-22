@@ -2,6 +2,12 @@ import Foundation
 
 /// Writes a mesh as a USDZ package: one mesh prim with smooth vertex normals and a plain
 /// UsdPreviewSurface material, Y-up, in centimeters.
+///
+/// We author the USD text ourselves (exact types, metersPerUnit) and let macOS's `usdcat`
+/// convert it to binary crate, which is smaller and loads fastest. Model I/O can write crate
+/// in-process but omits metersPerUnit and mistypes material colors, failing `usdchecker`
+/// (decision 2026-10-22). Without `usdcat` the text layer is packaged as-is; that also
+/// passes `usdchecker --arkit`.
 public enum USDZWriter {
     public static func write(mesh: Mesh, name: String, color: SIMD3<Double>,
                              surface: ConversionOptions.Surface, to url: URL) throws {

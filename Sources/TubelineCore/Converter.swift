@@ -37,7 +37,7 @@ public struct ConversionOptions: Codable, Equatable, Sendable {
     /// Tube diameter as a multiple of the SVG stroke width.
     public var thickness = 1.0
     /// Approximate number of flat sides around each tube. Higher is smoother and heavier.
-    public var facets = 40.0
+    public var facets = 32.0
     /// Rounded blend where separate strokes meet, as a fraction of the tube radius (0 = crisp).
     public var fillet = 0.0
     public var caps = Caps.svg
@@ -55,6 +55,9 @@ public struct ConversionOptions: Codable, Equatable, Sendable {
     public var millimetersPerPoint = 25.4 / 72
     /// Length of the longest side of the frame in centimeters, for `.fixed` sizing.
     public var size = 10.0
+    /// Simplify the mesh: long straight runs and flat faces collapse to a few large triangles,
+    /// keeping the surface within one facet's sag of the exact shape.
+    public var optimize = true
     /// Surface color as #RRGGBB.
     public var color = "#FFFFFF"
     public var surface = Surface.solid
@@ -84,8 +87,11 @@ public enum Converter {
     public static func convert(svg: URL, to output: URL, options: ConversionOptions) throws -> ConversionReport {
         let start = Date()
         let doc = try SVGParser.parse(url: svg, tolerance: 0.005)
+        let profile = ProcessInfo.processInfo.environment["TL_PROFILE"] != nil
         let mesh = try buildMesh(doc, options: options)
         let b = mesh.bounds
+        let t0 = Date()
+        defer { if profile { print(String(format: "  write usdz: %.3fs", Date().timeIntervalSince(t0))) } }
         try USDZWriter.write(mesh: mesh, name: output.deletingPathExtension().lastPathComponent,
                              color: parseHex(options.color), surface: options.surface, to: output)
         return ConversionReport(strokes: doc.strokes.count, fills: options.includeFills ? doc.fills.count : 0,
@@ -197,8 +203,11 @@ public enum Converter {
         guard !groups.isEmpty, minRadius.isFinite else { throw SVGError.noGeometry }
 
         // Grid resolution: enough samples across the thinnest tube, capped to keep memory bounded.
-        // Facets around a tube ≈ its circumference divided by the grid spacing.
-        var voxel = 2 * Double.pi * minRadius / max(options.facets, 6)
+        // Facets around a tube ≈ its circumference divided by the grid spacing. When optimizing,
+        // sample finer than the target so simplification has room to work: the dense mesh then
+        // deviates about half a facet's sag, and collapsing stops at one full sag.
+        let oversample = options.optimize ? 1.4 : 1
+        var voxel = 2 * Double.pi * minRadius / (max(options.facets, 6) * oversample)
         var total = Box3()
         for g in groups { total.include(g.bounds) }
         let maxSamples = 24_000_000.0
@@ -208,7 +217,9 @@ public enum Converter {
 
         radii.sort()
         let blend = options.fillet * radii[radii.count / 2]
-        let mesh = FusedMesher(groups: groups, voxel: voxel, blend: blend).build()
+        // One facet's sag on the thinnest tube: the deviation the facet count already accepts.
+        let tolerance = options.optimize ? minRadius * (1 - cos(.pi / max(options.facets, 6))) : 0
+        let mesh = FusedMesher(groups: groups, voxel: voxel, blend: blend, tolerance: tolerance).build()
         guard mesh.triangleCount > 0 else { throw ConversionError.emptyMesh }
         return mesh
     }
