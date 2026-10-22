@@ -42,6 +42,8 @@ The settings hierarchy now starts with Detail and Optimize Mesh. Low, Balanced, 
 
 The final [UI and HIG audit](research/2026-10-22-ui-ux-hig-audit.md) adds validated numeric drafts, saved-default guards, View menu camera/orbit commands, standard cancellation commands, clearer accessibility labels, and Reduce Motion handling. Sixty-nine integrated app tests pass. Native checks verified invalid-input feedback, orbit and Front, keyboard export, and text deletion preserving the icon. Actual VoiceOver, Full Keyboard Access, contrast, enlarged text, and minimum-window-size acceptance remain open in the audit.
 
+The [fill extrusion fix](research/2026-10-22-fill-extrusion-regression.md) honors omitted default fills without inventing strokes and prevents zero-width strokes from suppressing extrusion. Forty-nine core tests and seventy-four app tests pass; code commit `c0a8822` passed GitHub CI. All 162 corpus meshes remain valid: 158 match the release exactly, and four with unstyled filled lettering now extrude correctly. Native preview/export and USDZ validation passed. This fix is not in the published 0.2.0 download.
+
 ## Continue Development
 
 Work after the tag is on `codex/mesh-optimization`. Do not alter or move the published tag. Priorities:
