@@ -72,7 +72,7 @@ Follow [RELEASING.md](docs/release/RELEASING.md). `scripts/release.sh --publish`
 ## Compliance
 
 - **Sandbox:** user-selected read-write access plus app-scoped bookmarks. Saving next to the original file asks once per folder (`FolderAccess`) and remembers the answer. Hardened runtime is on.
-- **Privacy:** no network access, analytics, or telemetry. The privacy manifest declares only UserDefaults.
+- **Privacy:** no network access, analytics, or telemetry. The privacy manifest declares UserDefaults and file timestamps for user-selected SVGs.
 - **Icon:** the glyph is original artwork rendered by Tubeline. Never use SF Symbols in the icon, because Apple's license forbids it.
 - **Samples and tests:** use only original artwork or SVG written in the test. Never commit third-party icon sets.
 - **Naming:** never put an Apple product name, such as Motion or Reality, in the app's name.
