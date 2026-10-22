@@ -172,8 +172,8 @@ struct FusedMesher {
         } else {
             splitCreaseNormals(&mesh, creases: creases, lookup: lookup)
         }
-        if !mesh.validation().isValid {
-            if denseContour.validation().isValid {
+        if !mesh.validation(checkAllFailures: false).isValid {
+            if denseContour.validation(checkAllFailures: false).isValid {
                 // A valid contour is preferable to changing the surface extractor when
                 // only simplification caused the failure.
                 mesh = denseContour
@@ -185,7 +185,7 @@ struct FusedMesher {
                 if tolerance > 0 {
                     let dense = mesh
                     let simplified = simplify(dense, creases: [], lookup: lookup)
-                    if simplified.validation().isValid { mesh = simplified } else {
+                    if simplified.validation(checkAllFailures: false).isValid { mesh = simplified } else {
                         mesh = dense
                         splitCreaseNormals(&mesh, creases: nil, lookup: lookup)
                     }

@@ -170,4 +170,24 @@ final class MeshingTests: XCTestCase {
         XCTAssertTrue(m.warnings.contains { $0.contains("denser mesh") })
     }
 
+    func testFastValidationStillRejectsPinchedVerticesWithClosedEdges() {
+        // Two tetrahedra touch only at the origin. Every edge has two incident faces,
+        // but the shared vertex has two separate surface neighborhoods.
+        let pinched = Mesh(positions: [[0,0,0], [1,0,0], [0,1,0], [0,0,1], [-1,0,0], [0,-1,0], [0,0,-1]],
+                           normals: Array(repeating: [0,0,1], count: 7),
+                           indices: [0,2,1, 0,1,3, 0,3,2, 1,2,3, 0,4,5, 0,6,4, 0,5,6, 4,6,5])
+        let full = pinched.validation()
+        XCTAssertEqual(full.boundaryEdges, 0)
+        XCTAssertEqual(full.nonManifoldEdges, 0)
+        XCTAssertEqual(full.inconsistentEdges, 0)
+        XCTAssertEqual(full.invalidVertexLinks, 1)
+        XCTAssertFalse(pinched.validation(checkAllFailures: false).isValid)
+
+        let tetrahedron = Mesh(positions: Array(pinched.positions.prefix(4)),
+                               normals: Array(pinched.normals.prefix(4)),
+                               indices: Array(pinched.indices.prefix(12)))
+        XCTAssertTrue(tetrahedron.validation().isValid)
+        XCTAssertTrue(tetrahedron.validation(checkAllFailures: false).isValid)
+    }
+
 }

@@ -44,7 +44,9 @@ public struct MeshValidation: Sendable {
 }
 
 public extension Mesh {
-    func validation() -> MeshValidation {
+    func validation() -> MeshValidation { validation(checkAllFailures: true) }
+
+    internal func validation(checkAllFailures: Bool) -> MeshValidation {
         var result = MeshValidation()
         if normals.count != positions.count { result.invalidNormals += 1 }
         result.invalidNormals += normals.filter { !$0.x.isFinite || !$0.y.isFinite || !$0.z.isFinite || simd_length_squared($0) == 0 }.count
@@ -84,6 +86,9 @@ public extension Mesh {
             else if use.count != 2 { result.nonManifoldEdges += 1 }
             if use.count == 2 && use.winding != 0 { result.inconsistentEdges += 1 }
         }
+        // Meshing retries need only a verdict. A known failure cannot become valid
+        // after checking vertex links; preserve the complete public report by default.
+        if !checkAllFailures && !result.isValid { return result }
         for link in links where !link.isEmpty {
             var adjacency: [Int: [Int]] = [:]
             for edge in link {
