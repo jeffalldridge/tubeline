@@ -35,37 +35,42 @@ The output is a single mesh with smooth normals and one `UsdPreviewSurface` mate
 
 ## Building
 
-Requires macOS 14+ and Xcode 16+.
-
-Open `Tubeline.xcodeproj` and run the **Tubeline** scheme. The geometry engine lives in the `TubelineCore` Swift package in this repo and is shared by the app and a command-line tool.
-
-The Xcode project is generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen). After adding or removing files, run `xcodegen generate`.
-
-### Command line
+Requires macOS 14+, Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(`brew install xcodegen`). The Xcode project is generated, not committed.
 
 ```bash
-swift run -c release tubeline ~/Icons -o ~/Icons/3D --png
+cd app
+xcodegen generate
+open Tubeline.xcodeproj          # run the Tubeline scheme; ⌘U runs the tests
 ```
 
-Run `swift run tubeline --help` for every option. `--png` also writes a preview render.
+The geometry engine is the `TubelineCore` Swift package at the repo root, shared
+by the app and a command-line tool:
+
+```bash
+swift run -c release tubeline Samples -o /tmp/tubeline --png
+swift run tubeline --help
+```
+
+`Samples/` holds hand-made test SVGs covering the edge cases. Put your own icons
+in `Samples/User/` (gitignored).
 
 ### Releasing a notarized build
 
-1. Create `Config/Local.xcconfig` with `DEVELOPMENT_TEAM = <your team ID>` (it's gitignored).
-2. Store notary credentials once: `xcrun notarytool store-credentials tubeline-notary --apple-id <you> --team-id <team>`.
-3. Run `Scripts/release.sh`. It archives, signs with Developer ID, notarizes, staples, and writes `dist/Tubeline-<version>.zip`.
+`scripts/release.sh` archives, signs with Developer ID, notarizes, staples, and
+writes `dist/Tubeline-<version>.zip`. See the script header for one-time setup.
 
 ## Layout
 
 ```
+Package.swift           TubelineCore engine + tubeline CLI
 Sources/TubelineCore/   SVG parsing, dashing, distance-field meshing, USDZ writing, preview scene
-Sources/TubelineApp/    SwiftUI app (drop zone, settings, SceneKit preview)
 Sources/tubeline/       Command-line tool
-App/                    Info.plist and asset catalog for the Xcode app target
-Config/                 Signing settings
-Scripts/release.sh      Archive, notarize, staple, zip
+app/                    Xcode app (project.yml), sandboxed SwiftUI app, unit tests
+Samples/                Test SVGs (Samples/User/ is yours, gitignored)
+docs/                   Research, release and testing notes
 ```
 
 ## License
 
-MIT
+MIT © Tent Studios, LLC. Made by Jeff Alldridge.
