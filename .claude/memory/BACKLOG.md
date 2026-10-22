@@ -13,7 +13,7 @@ The public roadmap is ROADMAP.md plus GitHub issues labeled `roadmap` (issues #2
 - [ ] Does Solid Color render flat in Motion, and does Shaded respond to lights?
 - [ ] How does performance hold up with dozens of icons in one project?
 - [ ] Spot-check other apps that import USDZ, such as Reality Composer Pro, Keynote, and Blender.
-- [ ] Run Jeff's own icon sets from `Samples/User` and log any failures.
+- [x] Ran Jeff's first icon set (`Samples/User/SVG Icons Outlines`, 156 icons): no failures (October 22, 2026).
 
 ## Geometry
 
@@ -22,6 +22,7 @@ The public roadmap is ROADMAP.md plus GitHub issues labeled `roadmap` (issues #2
 - [ ] Support `<use>` and `<symbol>` (issue #6).
 - [ ] An optional crisp low-poly mode with analytic sweeps (issue #7).
 - [ ] Welded points with face-varying normals in USD.
+- [ ] Thin strokes are heavy: 1 pt strokes on a 48 × 48 canvas average about 44,000 triangles and 0.7 s per icon, because triangle count grows with line length divided by tube thickness. Consider a lower facet count for thin tubes, or a coarser simplification bound when tubes are small on screen.
 
 ## Polish and Shipping
 
