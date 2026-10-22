@@ -131,7 +131,7 @@ xcrun notarytool submit "$CLI_ZIP" --keychain-profile "$PROFILE" --wait
 # ---------------------------------------------------------------------------
 (cd "$OUT" && shasum -a 256 "$(basename "$DMG")" "$(basename "$CLI_ZIP")" > SHA256SUMS.txt && cat SHA256SUMS.txt)
 NOTES="$OUT/release-notes.md"
-awk -v want="## [$VERSION]" '/^## \[/ { if (p) exit; if (index($0, want) == 1) { p = 1; next } } p' CHANGELOG.md > "$NOTES"
+awk -v want="## [$VERSION]" '/^## \[/ { if (p) exit; if (index($0, want) == 1) { p = 1; next } } /^\[.*\]: / { next } p' CHANGELOG.md > "$NOTES"
 cat >> "$NOTES" <<EOF
 
 ---
