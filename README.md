@@ -30,7 +30,8 @@ It simplifies the surface by collapsing edges and sampling the distance to the e
 | `stroke-dasharray` and `stroke-dashoffset` | A separate tube for each dash, with the path's caps. Zero-length dashes with round caps become dots. |
 | A closed shape with both an outline and a fill | A solid disc whose edge matches the outline tube |
 | A fill with no outline (e.g., outlined text) | An extrusion at the depth you choose, with optional rounded edges, or a rounded slab |
-| A shape with no `fill` attribute | No fill. SVG's default black fill is ignored so line icons don't turn into solid blobs. |
+| A shape with no fill or stroke paint declared | SVG’s default black fill becomes an extrusion; no outline is added. |
+| A stroked shape with no `fill` attribute | No fill, preserving line icons that omit `fill="none"`. Declare a fill to include both. |
 
 Tubeline also reads every `path` command (including arcs), `line`, `polyline`, `polygon`, `rect` (with rounded corners), `circle`, `ellipse`, groups, nested transforms, inline styles, simple CSS class rules like those Illustrator exports, and `display="none"`. It skips `<text>`, `<image>`, and `<use>` and tells you when it does; convert text to outlines before importing.
 

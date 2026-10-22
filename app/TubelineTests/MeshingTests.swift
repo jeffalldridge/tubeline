@@ -13,6 +13,27 @@ final class MeshingTests: XCTestCase {
         XCTAssertTrue(validation.isValid, validation.summary, file: file, line: line)
     }
 
+    func testDefaultFillExtrudesLikeExplicitFillWithoutAnOutline() throws {
+        var options = ConversionOptions()
+        options.extrudeDepth = 2
+        options.extrudeRounding = 0
+        options.thickness = 3
+        func convert(_ paint: String) throws -> Mesh {
+            let svg = "<svg viewBox='0 0 12 12'><rect x='2' y='3' width='8' height='6' \(paint)/></svg>"
+            return try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: options)
+        }
+        let expected = try convert("fill='black' stroke='none'")
+        for paint in ["", "fill='black' stroke='red' stroke-width='0'"] {
+            let actual = try convert(paint)
+            assertWatertight(actual)
+            XCTAssertEqual(actual.positions, expected.positions)
+            XCTAssertEqual(actual.indices, expected.indices)
+            XCTAssertEqual(actual.bounds.size.x, 8 * 2.54 / 72, accuracy: 0.003)
+            XCTAssertEqual(actual.bounds.size.y, 6 * 2.54 / 72, accuracy: 0.003)
+            XCTAssertEqual(actual.bounds.size.z, 2 * 2.54 / 72, accuracy: 0.003)
+        }
+    }
+
     func testCrossingStrokesFuseIntoOneWatertightSolid() throws {
         let m = try mesh(##"<path d="M4 4 20 20"/><path d="M20 4 4 20"/>"##)
         XCTAssertGreaterThan(m.triangleCount, 100)

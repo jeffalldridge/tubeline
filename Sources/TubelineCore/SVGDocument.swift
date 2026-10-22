@@ -210,20 +210,20 @@ public final class SVGParser: NSObject, XMLParserDelegate {
         elementCount += 1
 
         let p = state.props
-        let opacity = (Double(p["opacity"] ?? "") ?? 1)
-        let strokeOn = Self.isPaint(p["stroke"]) && opacity * (Double(p["stroke-opacity"] ?? "") ?? 1) > 0
-        // SVG's default fill is black, but in icon files an implicit fill is almost always
-        // an accident, so only an explicitly declared fill counts.
-        let fillOn = Self.isPaint(p["fill"]) && opacity * (Double(p["fill-opacity"] ?? "") ?? 1) > 0
+        let opacity = Double(p["opacity"] ?? "") ?? 1
         if let width = p["stroke-width"], Self.userLength(width) == nil {
             doc.skipped.append("Unsupported stroke-width on <\(tag)>; appearance may differ")
         }
         let strokeWidth = (Self.userLength(p["stroke-width"]) ?? 1) * state.ctm.scaleFactor
+        let strokePaint = Self.isPaint(p["stroke"])
+        let strokeOn = strokePaint && strokeWidth > 0
+            && opacity * (Double(p["stroke-opacity"] ?? "") ?? 1) > 0
+        // Exporters often omit SVG's default black fill. Honor it for fill-only artwork,
+        // while preserving line icons that declare a stroke but omit fill="none".
+        let fillPaint = p["fill"] ?? (strokePaint ? "none" : "black")
+        let fillOn = Self.isPaint(fillPaint) && opacity * (Double(p["fill-opacity"] ?? "") ?? 1) > 0
 
-        // A file with no paint declared anywhere is treated as plain centerlines.
-        let implicitStroke = p["stroke"] == nil && p["fill"] == nil
-
-        if strokeOn || implicitStroke, strokeWidth > 0 {
+        if strokeOn {
             let cap = LineCap(rawValue: p["stroke-linecap"] ?? "butt") ?? .butt
             let k = state.ctm.scaleFactor
             let rawDashes = p["stroke-dasharray"] ?? "none"

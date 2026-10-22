@@ -22,7 +22,7 @@ Disconnected marks may form separate closed components in the same mesh. Where a
 
 The engine is the `TubelineCore` Swift package at the repository root. A conversion (`Converter.convert`) runs these steps:
 
-1. **Parse** (`SVGDocument.swift`, `PathData.swift`, `Dasher.swift`): read shapes, transforms, styles, and CSS classes; flatten curves into polylines; split dashes. Only fills the file declares count, never SVG's implicit black fill.
+1. **Parse** (`SVGDocument.swift`, `PathData.swift`, `Dasher.swift`): read shapes, transforms, styles, and CSS classes; flatten curves into polylines; split dashes. Honor default black fills when no stroke paint is declared. Explicitly stroked line art still requires an explicit fill; never invent a stroke for an unstyled shape.
 2. **Model** (`Converter.buildMesh`): turn strokes into primitives (capsules, capped cylinders, spheres) and fills into slabs or extrusions, grouped so fillets blend only between separate strokes. Scale from artwork points to centimeters.
 3. **Sample and contour** (`FusedMesher.swift`): sample the exact distance on a grid in parallel, using `SpatialLookup`, then extract a surface with dual contouring so creases stay sharp. Meshing uses normalized internal units; physical sizing is applied afterward. Invalid contour topology triggers a tetrahedral extraction from the same whole-icon field.
 4. **Simplify** (`Decimator.swift`): collapse edges by quadric error, testing surface distance at the proposed vertex and sample points across changed triangles. Tiles run in parallel; a final pass cleans up the seams between them. These probes are a sampled error criterion, not a proof of the maximum error over every triangle.

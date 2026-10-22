@@ -6,6 +6,7 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ### Fixed
 
+- Fill-only artwork that omits SVG’s default black fill extrudes without an invented outline. Zero-width strokes no longer suppress a fill’s extrusion depth. Explicitly stroked line icons retain their existing fill handling.
 - Invalid numeric edits show field-specific guidance without changing applied settings. Saved defaults reject invalid values, and untouched fields preserve calibration precision.
 - Preview accessibility reports unavailable content accurately and identifies same-name icons by source folder and path.
 - Concurrent CLI exports publish without replacing another process's file. A late preview-image collision preserves the existing PNG and reports partial success.
