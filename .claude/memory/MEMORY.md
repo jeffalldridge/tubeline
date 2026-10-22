@@ -2,7 +2,7 @@
 
 A rolling log of the last ten sessions, newest first. Older entries move to `archive/`.
 
-## October 22, 2026: Prepare 0.2.0 for Colleague Review
+## October 22, 2026: Release 0.2.0 for Colleague Review
 
 **Worked on:** Independent engine, export, and app audits followed by geometry validation, safer export state, batch settings with per-field overrides, saved defaults, visible output controls and triangle counts, integer output scaling, and repaired camera commands. Front uses an orthographic camera with zero rotation. USDZ remains XY artwork facing +Z, Y up, with no baked camera or rotation.
 
@@ -10,7 +10,7 @@ A rolling log of the last ten sessions, newest first. Older entries move to `arc
 
 **Tradeoff:** Forty-two corpus icons take a denser validated path. Across that group, median output is 146,382 triangles and median parse-and-mesh time is 5.619 s. Do not weaken topology checks to improve these numbers. The next task is reducing fallback extraction and simplification cost while preserving the whole-icon SDF.
 
-**Release handoff:** Jeff authorized logical commits, pushing, and a signed, notarized 0.2.0 release. The release script verifies signing, sandboxing, notarization, and Gatekeeper acceptance before publishing. Record the actual release result after it finishes. Keep further optimization separate from the v0.2.0 tag.
+**Release handoff:** Jeff authorized logical commits, pushing, and a signed, notarized 0.2.0 release. Published v0.2.0 from commit `0fba569` with a signed, notarized, stapled DMG and a signed, notarized CLI. Gatekeeper accepted both app and DMG. GitHub CI run `39860251368` passed for that exact commit, including engine build/tests, sample USDZ validation, and app tests. The actual stored notary profile is `syntaxlook-notary`. Further work is on `codex/mesh-optimization`; preserve the release tag. See `docs/next-work.md`.
 
 ## October 22, 2026: From Idea to Public 0.1.0 Release
 

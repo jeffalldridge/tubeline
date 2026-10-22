@@ -8,7 +8,7 @@ This file is the single source of truth for AI sessions in this repository. `CLA
 - **Not:** a 3D modeler, a renderer, or a general SVG extruder. Exported files have no textures, UV maps, lights, or cameras.
 - **Publisher:** Tent Studios, LLC (Jeff Alldridge), Apple Developer team `ACL5A8Y9U7`.
 - **Price and license:** free, MIT License, public repository at github.com/jeffalldridge/tubeline.
-- **Distribution:** notarized Developer ID builds on GitHub Releases (version 0.1.0 shipped October 22, 2026). The Mac App Store may come later.
+- **Distribution:** notarized Developer ID builds on GitHub Releases (version 0.2.0 shipped October 22, 2026). The Mac App Store may come later.
 - **Platform:** Apple silicon Macs running macOS 14 or later. No Intel builds.
 - **Philosophy:** it should feel like something Apple could have shipped. Use Apple's frameworks and avoid third-party dependencies unless one clearly earns its place. The output should never need cleanup by a motion designer.
 
@@ -86,7 +86,7 @@ Follow [RELEASING.md](docs/release/RELEASING.md). `scripts/release.sh --publish`
 | 2 | Testing in motion graphics apps, starting with Apple Motion (issue #3) | Open |
 | 3 | Lighter, faster meshes | Done; manifold contouring (issue #4) is still open |
 | 4 | Polish: Settings window, accessibility, HIG review | Open |
-| 5 | Ship: notarized build, icon, public repository | 0.1.0 released; trademark check still open |
+| 5 | Ship: notarized build, icon, public repository | 0.2.0 released; trademark check still open |
 
 The public plan is [ROADMAP.md](ROADMAP.md). Every item there is a GitHub issue labeled `roadmap`; keep the file and the issues in sync, and move finished work to [CHANGELOG.md](CHANGELOG.md). USDZ is always the default export format, and GLB export for After Effects (issue #2) is next.
 
