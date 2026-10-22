@@ -1,5 +1,15 @@
 # After the 0.2.0 Release
 
+## Agent Handoff Snapshot
+
+Stopped after code commit `27db866` on `codex/mesh-optimization`. All requested changes are committed and pushed in [draft PR #8](https://github.com/jeffalldridge/tubeline/pull/8); nothing has been merged into `main` or added to the published 0.2.0 download.
+
+Start review with the pinned 6–64 Mesh Detail control, the default-fill correction, and the [HIG audit](research/2026-10-22-ui-ux-hig-audit.md). The latest local app build and native Draft/High/Balanced checks passed. The last full local suites passed seventy-four app tests and forty-nine core tests before the final UI-only adjustment.
+
+[CI on fill-fix commit `c0a8822`](https://github.com/jeffalldridge/tubeline/actions/runs/39869360713) passed. At handoff, [CI for `27db866`](https://github.com/jeffalldridge/tubeline/actions/runs/39870352555) was pending behind an earlier run; verify its final result before merging. No background development or release publication is scheduled.
+
+Remaining acceptance work: actual VoiceOver and Full Keyboard Access, contrast and enlarged text, minimum-size layout, Reduce Motion behavior, and Motion/Cinema 4D import of these follow-up changes. Geometry experiments remain unapplied. Private icons, renders, and diagnostic logs remain outside Git.
+
 ## Shareable Build
 
 [Download Tubeline 0.2.0](https://github.com/jeffalldridge/tubeline/releases/download/v0.2.0/Tubeline-0.2.0.dmg). Open the DMG and drag Tubeline to Applications. Requires Apple silicon and macOS 14 or later.
