@@ -51,7 +51,7 @@ Clipping, masks, filters, nested SVG viewports, and non-scaling strokes are unsu
 
 Each file contains a single mesh with smooth normals and one `UsdPreviewSurface` material. Models are Y-up and measured in centimeters (`metersPerUnit = 0.01`), with no lights or cameras, and they pass Apple's `usdchecker`.
 
-App Settings lets you save the current batch settings as defaults for future sessions. Automatic export is off for new installations; you can enable it there after choosing your settings and destination. Cancel Export keeps completed files and stops remaining work. A conversion already meshing finishes its current stage before cancellation takes effect.
+App Settings lets you save the current batch settings as defaults for future sessions. Automatic export is off for new installations; you can enable it there after choosing your settings and destination. Files added or refreshed during an automatic export wait for the current batch. Cancel Export clears that queue, keeps completed files, and stops remaining work. A conversion already meshing finishes its current stage before cancellation takes effect.
 
 ### Sizing in Motion
 

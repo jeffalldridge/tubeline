@@ -28,12 +28,20 @@ The signed Release app launched, previewed an original heart SVG, exported it, a
 
 The exported artwork lies in XY, faces +Z, and uses Y up at zero rotation. It contains no camera or baked rotation. Projection in Motion or another receiving app depends on that app's camera. Jeff confirmed that the earlier USDZ output works well in Motion; the new release has not been independently accepted in Motion or Cinema 4D.
 
+## Verified Follow-Up on the Development Branch
+
+Commit `a5cc62e` fixes automatic-export requests lost during active batches and completed-row removals that canceled remaining exports. Requests coalesce by icon, take current settings when dequeued, and are discarded on explicit cancellation. Commit `0b5f9ba` strengthens orientation checks; a temporary vertical-reflection mutation failed the intended assertions. Commit `b4a7aeb` skips vertex-link diagnostics only after another check has already established failure. The public validation report remains complete.
+
+The complete app suite passed sixty-one tests, and the standalone core suite passed forty-four. A clean and incremental app build passed the built-product metadata and icon checks. The validator change was compared against the release baseline across all 162 SVGs: triangle counts, strict validity, geometry/index hashes, normal hashes, and warning counts matched exactly.
+
+Three alternating runs on one complex icon measured median parse-and-mesh time of 5.707 s for the release baseline and 5.246 s for the validator change, about 8.1 percent lower. This is a result for one case, not a corpus-wide speed claim. Larger extraction and validator experiments remain temporary and unmerged.
+
 ## Continue Development
 
 Work after the tag is on `codex/mesh-optimization`. Do not alter or move the published tag. Priorities:
 
 1. Reduce fallback extraction and validation cost while preserving the whole-icon signed distance field and every topology acceptance rule.
-2. Strengthen the orientation regression test to detect vertical mirroring through the asymmetric arm location, including after USDZ reload.
+2. Keep the strengthened orientation regression as a guard when changing coordinate conversion or export.
 3. Rerun the complete local corpus after geometry changes. Keep private SVGs and derived renders out of Git.
 4. Continue with lighter fallback meshes or manifold dual contouring, then GLB export. Issue #4 tracks fallback performance and topology; issue #2 tracks GLB.
 

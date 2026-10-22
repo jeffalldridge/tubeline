@@ -4,6 +4,17 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- Removing a completed or failed row no longer cancels the remaining batch.
+- Automatic export queues SVGs added or refreshed during an active batch, uses current settings when each request starts, and clears queued requests on Cancel.
+
+### Changed
+
+- Meshing retries skip additional diagnostics after a mesh is already known to be invalid. Complete validation reports and acceptance rules are unchanged.
+- Release preflight checks the built app's copyright, category, encryption declaration, and privacy-manifest syntax.
+- Orientation tests now detect vertical mirroring in both the generated mesh and reloaded USDZ.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added
