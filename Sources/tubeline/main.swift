@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import TubelineCore
 
 let version = "0.2.0"
@@ -159,22 +160,65 @@ let exports = files.map { svg -> (URL, URL) in
     }
 }
 
+func publishFile(_ staged: URL, to destination: URL) throws {
+    // The kernel must reject an occupied name; a preflight check cannot protect
+    // against another process publishing after the check.
+    let flags = replaceExisting ? 0 : UInt32(RENAME_EXCL)
+    guard renamex_np(staged.path, destination.path, flags) == 0 else {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno),
+                      userInfo: [NSFilePathErrorKey: destination.path])
+    }
+}
+
+func publishModel(_ staged: URL, proposed: URL) throws -> URL {
+    var candidate = proposed
+    var suffix = 2
+    while true {
+        let png = candidate.deletingPathExtension().appendingPathExtension("png")
+        let targets = renderPNG ? [candidate, png] : [candidate]
+        let reservedByAnotherJob = candidate != proposed && targets.contains { reservedPaths.contains(pathKey($0)) }
+        if !reservedByAnotherJob && (replaceExisting || !renderPNG || !FileManager.default.fileExists(atPath: png.path)) {
+            do {
+                try publishFile(staged, to: candidate)
+                for target in targets { reservedPaths.insert(pathKey(target)) }
+                return candidate
+            } catch {
+                let error = error as NSError
+                guard !replaceExisting, error.domain == NSPOSIXErrorDomain, error.code == Int(EEXIST) else { throw error }
+            }
+        }
+        candidate = proposed.deletingLastPathComponent()
+            .appendingPathComponent("\(proposed.deletingPathExtension().lastPathComponent) \(suffix)")
+            .appendingPathExtension("usdz")
+        suffix += 1
+    }
+}
+
 var failures = 0
 for (svg, out) in exports {
+    let stagingDirectory = out.deletingLastPathComponent()
+        .appendingPathComponent(".Tubeline-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: stagingDirectory) }
     do {
-        let r = try Converter.convert(svg: svg, to: out, options: options)
+        // A sibling directory keeps publication on the same volume, where rename is atomic.
+        try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
+        let stagedModel = stagingDirectory.appendingPathComponent(out.lastPathComponent)
+        let r = try Converter.convert(svg: svg, to: stagedModel, options: options)
+        let final = try publishModel(stagedModel, proposed: out)
         var line = String(format: "✓ %@ → %@ (%.2f × %.2f × %.2f cm, %@ triangles, %.2f s)",
-                          svg.lastPathComponent, out.path,
+                          svg.lastPathComponent, final.path,
                           r.dimensions.x, r.dimensions.y, r.dimensions.z, r.triangles.formatted(), r.seconds)
         if !r.skipped.isEmpty { line += "; warnings: " + r.skipped.joined(separator: ", ") }
         if renderPNG {
             do {
-                try PreviewScene.renderPNG(usdz: out, to: out.deletingPathExtension().appendingPathExtension("png"),
+                let stagedPNG = stagingDirectory.appendingPathComponent("preview.png")
+                try PreviewScene.renderPNG(usdz: final, to: stagedPNG,
                                            size: CGSize(width: pngSize, height: pngSize),
                                            transparent: pngTransparent, tilt: pngTransparent ? 0 : 0.35)
+                try publishFile(stagedPNG, to: final.deletingPathExtension().appendingPathExtension("png"))
             } catch {
                 failures += 1
-                FileHandle.standardError.write(Data("\(svg.lastPathComponent): model saved to \(out.path), but the preview image failed: \(error.localizedDescription)\n".utf8))
+                FileHandle.standardError.write(Data("\(svg.lastPathComponent): model saved to \(final.path), but the preview image failed: \(error.localizedDescription)\n".utf8))
                 continue
             }
         }

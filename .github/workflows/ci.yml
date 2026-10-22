@@ -26,6 +26,9 @@ jobs:
       - name: Engine and CLI
         run: swift build -c release --product tubeline
 
+      - name: CLI output safety
+        run: bash scripts/test-cli-output.sh
+
       - name: Engine tests
         run: swift test
 
