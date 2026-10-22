@@ -2,6 +2,16 @@
 
 A rolling log of the last ten sessions, newest first. Older entries move to `archive/`.
 
+## October 22, 2026: Prepare 0.2.0 for Colleague Review
+
+**Worked on:** Independent engine, export, and app audits followed by geometry validation, safer export state, batch settings with per-field overrides, saved defaults, visible output controls and triangle counts, integer output scaling, and repaired camera commands. Front uses an orthographic camera with zero rotation. USDZ remains XY artwork facing +Z, Y up, with no baked camera or rotation.
+
+**Evidence:** Fifty-six app tests passed; all 162 test SVGs passed strict mesh validation. Six original samples passed `usdchecker --arkit`. Native checks covered export destinations, collision handling, inheritance, scale, and Front/Reset controls. Jeff reports that the earlier USDZ output imports well into Motion; the new release still needs his Motion and Cinema 4D acceptance.
+
+**Tradeoff:** Forty-two corpus icons take a denser validated path. Across that group, median output is 146,382 triangles and median parse-and-mesh time is 5.619 s. Do not weaken topology checks to improve these numbers. The next task is reducing fallback extraction and simplification cost while preserving the whole-icon SDF.
+
+**Release handoff:** Jeff authorized logical commits, pushing, and a signed, notarized 0.2.0 release. The release script verifies signing, sandboxing, notarization, and Gatekeeper acceptance before publishing. Record the actual release result after it finishes. Keep further optimization separate from the v0.2.0 tag.
+
 ## October 22, 2026: From Idea to Public 0.1.0 Release
 
 **Worked on:** Built the whole tool in one session. The engine parses SVG (paths, arcs, transforms, CSS classes, dashes), models the icon as a signed distance field, contours it with crisp creases or fillets, handles fills as discs and extrusions, simplifies the mesh against the exact surface (6–14 times fewer triangles), and writes validated USDZ. Added the SwiftUI app with a SceneKit preview, the command-line tool, the Tent Studios repository layout, sandboxing, and twenty-two tests. Published the MIT-licensed repository with CI, then released a notarized 0.1.0 with an original icon (replacing an SF Symbol) and a public roadmap. Finished with a cleanup pass that rewrote the docs in Chicago style and replaced three samples that had reused Lucide path data.

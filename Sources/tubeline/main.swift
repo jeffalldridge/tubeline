@@ -1,7 +1,7 @@
 import Foundation
 import TubelineCore
 
-let version = "0.1.0"
+let version = "0.2.0"
 
 let usage = """
 Usage: tubeline [options] <file.svg | folder> ...

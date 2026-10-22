@@ -4,12 +4,36 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
+### Added
+
+- Batch settings with per-field overrides for selected icons, plus saved app defaults.
+- A persistent output bar with visible export actions, destination selection, progress, cancellation, and retry for failed items.
+- SVG Physical Size in the app and `--physical` in the CLI, resolving CSS pixels separately from print points.
+- Integer Output Scale with 1×, 10×, and 100× presets in the app and `--scale` in the CLI for larger working dimensions.
+- Closed-mesh validation for edge incidence, winding, vertex neighborhoods, degenerate triangles, and duplicate faces.
+- Preview camera controls and framing that accounts for narrow viewports.
+- Warnings for unsupported SVG appearance features and approximated stroke transforms.
+- Regression tests for export state, filename collisions, settings inheritance, cancellation, path fidelity, topology, units, and material color.
+
 ### Fixed
 
+- Camera commands reconnect the displayed camera after orbiting. Fit preserves the viewing angle; Front and Reset View restore explicit orientations.
+- Batch exports preserve existing outputs and assign distinct names to same-name inputs. The CLI supports explicit replacement with `--replace`.
+- Exports retain the settings snapshot that produced them, so intervening edits leave the result marked outdated.
+- Failed or loading previews no longer display a previously selected icon.
+- Flat caps retain their endpoint when straight paths contain short segments, and collinear curves preserve backtracking.
+- Meshing uses a normalized internal scale to avoid topology changes caused by physical output sizing.
+- Exported material colors convert sRGB picker values to linear shader values.
 - Replaced three sample icons that reused path data from the Lucide icon set with original drawings.
 
 ### Changed
 
+- Adding files previews them before export by default. Automatic export remains available in App Settings.
+- Re-adding an existing SVG refreshes it; overlapping file and folder inputs are deduplicated.
+- Preview and export conversions share a bounded worker, and unpublished results are staged before final output.
+- The app calls the approximate meshing control Detail and places it with other advanced settings.
 - The command-line tool now stops with a clear message for unknown options, misspelled choices, and out-of-range numbers instead of silently ignoring them, and it has a `--version` option.
 - Rewrote the documentation in American English following the *Chicago Manual of Style*.
 
@@ -29,5 +53,6 @@ The first public release.
 - The `tubeline` command-line tool for batch conversion, with optional PNG previews.
 - Exported files contain one mesh and one material in binary USD, measured in centimeters with Y up, and pass Apple's `usdchecker --arkit`.
 
-[Unreleased]: https://github.com/jeffalldridge/tubeline/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jeffalldridge/tubeline/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jeffalldridge/tubeline/releases/tag/v0.2.0
 [0.1.0]: https://github.com/jeffalldridge/tubeline/releases/tag/v0.1.0

@@ -12,12 +12,15 @@ An SVG that converts incorrectly is the most useful bug report. Please include:
 
 ## Setting Up
 
-You need an Apple silicon Mac with macOS 14 or later, Xcode 16 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+You need an Apple silicon Mac with macOS 14 or later, Xcode 26 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```bash
-cd app && xcodegen generate          # The Xcode project is generated, never committed.
+swift test                         # Engine tests run without an app host.
+cd app
+xcodegen generate                  # The Xcode project is generated, never committed.
 xcodebuild -project Tubeline.xcodeproj -scheme Tubeline test \
   CODE_SIGNING_ALLOWED=NO            # Or open the project in Xcode and press ⌘U.
+cd ..
 swift run -c release tubeline Samples -o /tmp/tubeline --png
 ```
 
@@ -26,7 +29,7 @@ To run the signed app under your own Apple ID, choose your team in Xcode's Signi
 ## Guidelines
 
 - The engine lives in `Sources/TubelineCore` and the app in `app/Tubeline`. [AGENTS.md](AGENTS.md) explains the architecture and conventions. It also serves as the guide for AI coding assistants.
-- Every icon must become one closed solid. Never mesh tubes separately and stitch them together.
+- Mesh the whole icon's distance field once. Overlaps must fuse, and disconnected marks must remain closed components. Never mesh tubes separately and stitch them together. Validate topology before exporting.
 - Add a test with every fix in `app/TubelineTests`. Use SVG strings written in the test or files in `Samples`, never third-party icon sets. Keep your own test icons in `Samples/User`, which Git ignores.
 - Write docs and interface text in American English, following the *Chicago Manual of Style*.
 - To see how long each stage takes, run `TL_PROFILE=1 swift run -c release tubeline …`.

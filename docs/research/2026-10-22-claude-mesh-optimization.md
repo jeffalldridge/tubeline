@@ -43,6 +43,25 @@ Tubeline 0.1.0 implemented recommendations 1 and 2 in Swift, without libraries. 
 
 The biggest speedup came from flattening the distance lookup into plain arrays. Nested Swift arrays and class references had caused reference-counting contention across threads. Recommendation 3 and the manifold fix (GitHub issue #4) are still open.
 
+## Validation After the Project Review
+
+The October 22 improvement pass added topology validation before export. The earlier watertightness test accepted any even edge incidence and skipped collapsed edges, so its passing result did not establish a manifold surface. The replacement checks edge incidence and winding, duplicate and degenerate faces, finite coordinates and indices, and connected vertex neighborhoods after welding split-normal vertices. It does not prove the absence of every geometric self-intersection.
+
+Meshing now runs in normalized tube-radius units, with physical sizing applied afterward. This removes the scale-sensitive failures reproduced in the original crossing fixture. If simplification damages an otherwise valid dual contour, the dense contour is retained. Ambiguous contours retry extraction from the same sampled whole-icon field using consistent tetrahedra. This avoids stitching separate strokes, but it can require more triangles and approximates sharp creases with the sampled field.
+
+A local run converted all six original samples and the private collection of 156 icons with the default detail of 32, optimization enabled, and Output Scale 1×. All 162 meshes passed validation. These are parse-and-mesh timings from one run on the development Mac, not a controlled performance comparison with version 0.1.0.
+
+| Measurement | Median | Ninety-Fifth Percentile | Maximum |
+| --- | --- | --- | --- |
+| All meshes, triangles | 48,844 | 183,486 | 231,620 |
+| All meshes, time | 0.93 s | 6.63 s | 13.22 s |
+| Denser path, triangles | 146,382 | 222,346 | 231,620 |
+| Denser path, time | 5.62 s | 7.39 s | 13.22 s |
+
+Forty-two icons used the denser path. The app and CLI warn when this happens; the app keeps the triangle count visible above the preview. Reducing this cost while preserving manifold topology remains the priority for issue #4. The private artwork and rendered validation artifacts remain outside Git.
+
+The app-hosted suite passed forty-nine tests, including eight app-state regressions; `swift test` passed the forty-one engine tests separately. All six tracked samples exported, rendered to PNG, and passed `usdchecker --arkit`. Native app checks covered per-field inheritance, repeated exports without replacement, Finder reveal, visible camera and output controls, and the accessible preview. Output Scale 100× changed the test heart's width from approximately 0.706 cm to 70.59 cm while retaining 8,038 triangles. Six independent identical CLI conversions also produced identical USDZ hashes.
+
 ## Licenses
 
 meshoptimizer: MIT. probabilistic-quadrics: MIT. Manifold: Apache 2.0. OpenMesh: BSD 3-Clause. CGAL: GPL or commercial (avoid).

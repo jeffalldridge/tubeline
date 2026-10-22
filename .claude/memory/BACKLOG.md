@@ -4,8 +4,9 @@ The public roadmap is ROADMAP.md plus GitHub issues labeled `roadmap` (issues #2
 
 ## Next Session First
 
-- [ ] Jeff tests exported icons in Motion (issue #3). This is the biggest open question.
-- [ ] GLB export for After Effects, with USDZ staying the default (issue #2). This is the 0.2 headline.
+- [x] Jeff confirms earlier USDZ output works well in Motion.
+- [ ] Verify 0.2.0 in Motion and Cinema 4D, including Front orientation and integer scale.
+- [ ] GLB export for After Effects, with USDZ staying the default (issue #2). Planned after the 0.2 workflow release.
 
 ## Testing in Motion Graphics Apps (Issue #3)
 
@@ -17,7 +18,7 @@ The public roadmap is ROADMAP.md plus GitHub issues labeled `roadmap` (issues #2
 
 ## Geometry
 
-- [ ] Manifold dual contouring (issue #4). Where strokes cross, a few edges are shared by four triangles. The mesh is still closed and the effect is invisible, but on an X crossing a circle it affects about 5 percent of edges. Fix it with several vertices per cell (Schaefer, Ju, and Warren 2007) or by splitting non-manifold edges after contouring.
+- [ ] Reduce manifold fallback cost (issue #4). Strict validation now rejects invalid dual contours and uses a validated tetrahedral fallback. Forty-two of 162 corpus icons use a denser path; median 146,382 triangles and 5.619 s in this group. Optimize extraction and simplification without weakening validation.
 - [ ] Miter and bevel joins (issue #5); corners are always round today.
 - [ ] Support `<use>` and `<symbol>` (issue #6).
 - [ ] An optional crisp low-poly mode with analytic sweeps (issue #7).
@@ -30,5 +31,6 @@ The public roadmap is ROADMAP.md plus GitHub issues labeled `roadmap` (issues #2
 - [x] Notarized 0.1.0 release with DMG, CLI, and checksums (October 22, 2026).
 - [ ] Add release signing secrets to the repository so tags can release from CI.
 - [ ] Merge or close Dependabot's `actions/checkout` update (pull request #1).
-- [ ] Settings window, keyboard shortcuts, accessibility labels, and a swiftui-pro review.
+- [x] Settings window, camera keyboard shortcuts, accessibility labels, and a SwiftUI review.
+- [ ] Full VoiceOver and localization acceptance.
 - [ ] Trademark check for the name.

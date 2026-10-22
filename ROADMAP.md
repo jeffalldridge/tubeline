@@ -2,7 +2,7 @@
 
 This is where Tubeline is headed. It's a plan, not a promise, and priorities will shift as people use the app. Each item links to a GitHub issue, where you can follow progress, add a 👍, or describe how you'd use it.
 
-*Last updated October 22, 2026 (version 0.1.0)*
+*Last updated October 22, 2026 (version 0.2.0)*
 
 ## Principles
 
@@ -11,22 +11,22 @@ This is where Tubeline is headed. It's a plan, not a promise, and priorities wil
 - Every icon becomes one closed solid, light enough to animate dozens at a time.
 - The app uses Apple's frameworks, avoids third-party dependencies, and never connects to the network or collects data. It runs on Apple silicon Macs with macOS 14 or later.
 
-## Now (Version 0.1)
+## Now (Version 0.2)
 
 - [Test the output in motion graphics apps, starting with Apple Motion](https://github.com/jeffalldridge/tubeline/issues/3): check size, materials, and performance in real projects. Feedback is welcome.
 - Fix problems found with real-world icons. If one converts badly, please [report it](https://github.com/jeffalldridge/tubeline/issues/new?template=bad-conversion.yml).
 
-## Next (Version 0.2)
+## Next
 
 - [Export GLB (glTF 2.0) for After Effects and other apps](https://github.com/jeffalldridge/tubeline/issues/2). USDZ stays the default, and you can choose GLB or both. Solid Color will use an unlit material so it looks flat in GLB too.
-- [Make meshes strictly manifold where strokes cross](https://github.com/jeffalldridge/tubeline/issues/4).
+- [Reduce the cost of manifold output at stroke crossings](https://github.com/jeffalldridge/tubeline/issues/4). Version 0.2 validates every mesh and uses a denser fallback when needed.
 - [Support miter and bevel corners](https://github.com/jeffalldridge/tubeline/issues/5).
 
 ## Later
 
 - [Support `<use>` and `<symbol>`](https://github.com/jeffalldridge/tubeline/issues/6).
 - [Add an optional low-poly mode with crisp joins](https://github.com/jeffalldridge/tubeline/issues/7).
-- Add a Settings window, and review accessibility and localization.
+- Continue accessibility and localization review. The Settings window shipped in 0.2.
 - Offer Tubeline on the Mac App Store in addition to the free download.
 
 ## Not Planned

@@ -2,6 +2,10 @@
 
 Architectural and product decisions, with the reasoning behind them. Newest first.
 
+## October 22, 2026: Share 0.2.0 Before Further Optimization (Jeff)
+
+Ship the reviewed workflow, camera, sizing, and geometry safeguards as 0.2.0 so Jeff can demonstrate it to a colleague. GLB remains next without a promised version. Continue optimization after the release tag. Output Scale is an integer multiplier; physical units and topology stay independent. Preview projection belongs to the preview, while the exported model faces +Z at zero rotation.
+
 ## October 22, 2026: Light Protection for main (Jeff)
 
 A repository ruleset named "Protect main" blocks force pushes and branch deletion and requires the `build-and-test` CI check on pull requests. Repository admins can bypass it, so Jeff and his agents keep pushing directly to `main`. Required reviews and required pull requests were left off because they would force a solo maintainer to review his own work.

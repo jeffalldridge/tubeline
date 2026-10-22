@@ -16,7 +16,7 @@ This file is the single source of truth for AI sessions in this repository. `CLA
 
 **Every icon becomes one closed solid.** Strokes, caps, joints, dashes, and fills are modeled as a single signed distance field and meshed once. Never mesh tubes separately and stitch them together, and never leave interior faces; clean intersections are the product. Any optimization must keep the mesh closed, with no boundary edges. `MeshingTests.assertWatertight` checks this.
 
-One known gap: where strokes cross, dual contouring can join two sheets of surface along a single edge. That makes the mesh non-manifold at those edges, though still closed. The fix is tracked in issue #4.
+Disconnected marks may form separate closed components in the same mesh. Where a dual-contouring cell joins surface sheets incorrectly, the engine retries the same sampled union with consistent tetrahedra. It validates edge incidence, winding, vertex neighborhoods, and degenerate or duplicate faces before export. The fallback can produce heavier meshes; contouring improvements remain tracked in issue #4.
 
 ## How the Engine Works
 
@@ -24,8 +24,8 @@ The engine is the `TubelineCore` Swift package at the repository root. A convers
 
 1. **Parse** (`SVGDocument.swift`, `PathData.swift`, `Dasher.swift`): read shapes, transforms, styles, and CSS classes; flatten curves into polylines; split dashes. Only fills the file declares count, never SVG's implicit black fill.
 2. **Model** (`Converter.buildMesh`): turn strokes into primitives (capsules, capped cylinders, spheres) and fills into slabs or extrusions, grouped so fillets blend only between separate strokes. Scale from artwork points to centimeters.
-3. **Sample and contour** (`FusedMesher.swift`): sample the exact distance on a grid in parallel, using `SpatialLookup`, then extract a surface with dual contouring so creases stay sharp.
-4. **Simplify** (`Decimator.swift`): collapse edges by quadric error, accepting a collapse only if the result stays within one facet's sag of the exact surface. Tiles run in parallel; a final pass cleans up the seams between them.
+3. **Sample and contour** (`FusedMesher.swift`): sample the exact distance on a grid in parallel, using `SpatialLookup`, then extract a surface with dual contouring so creases stay sharp. Meshing uses normalized internal units; physical sizing is applied afterward. Invalid contour topology triggers a tetrahedral extraction from the same whole-icon field.
+4. **Simplify** (`Decimator.swift`): collapse edges by quadric error, testing surface distance at the proposed vertex and sample points across changed triangles. Tiles run in parallel; a final pass cleans up the seams between them. These probes are a sampled error criterion, not a proof of the maximum error over every triangle.
 5. **Shade and order**: take normals from the exact surface, split them at creases, and reorder triangles for the GPU (`MeshOrdering.swift`).
 6. **Write** (`USDZWriter.swift`): write USD text with exact types, convert it to binary with macOS's `usdcat`, and package it as USDZ with our own zip writer. Model I/O was rejected because its output fails `usdchecker`.
 
@@ -53,6 +53,7 @@ README, ROADMAP, CHANGELOG, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, LICENSE
 ## Build and Test
 
 ```bash
+swift test                     # Engine tests without an app host.
 cd app
 xcodegen generate
 xcodebuild -project Tubeline.xcodeproj -scheme Tubeline build
@@ -62,7 +63,7 @@ swift run -c release tubeline Samples -o /tmp/out --png
 for f in /tmp/out/*.usdz; do usdchecker --arkit "$f"; done
 ```
 
-The test suite has twenty-two tests and runs in about a second. CI (`.github/workflows/ci.yml`) runs the same steps on an Apple silicon runner with Xcode 26.
+The app-hosted suite includes engine tests and app-state regressions. CI (`.github/workflows/ci.yml`) also runs the standalone engine tests, converts the original samples, and validates USDZ on an Apple silicon runner with Xcode 26.
 
 ## Releases
 

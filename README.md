@@ -6,7 +6,11 @@
 
 Tubeline is a free Mac app that turns stroked SVG icons into 3D tube models. It saves them as USDZ files for Apple Motion and other motion graphics apps that import USDZ.
 
-Drop SVG files or folders onto the window. Each stroke becomes a round tube as thick as the stroke, and the model is saved next to the original or in a folder you choose. A 3D preview shows exactly what will be exported, along with its triangle count and real-world size.
+Drop SVG files or folders onto the window, adjust the batch settings, and preview an icon. Each stroke becomes a round tube as thick as the stroke. Choose where to save the models in the output bar, then click Export. Existing files are kept; exports receive numbered names when needed.
+
+Batch settings apply to every icon. Choose Selected Icon to customize individual values while the rest continue to follow the batch. Show Form lights the preview to help inspect its geometry without changing the exported material. Fit, Front, and Reset View control the camera.
+
+Front uses an orthographic view so the model reads as the flat SVG. Fit keeps the current angle, and Reset View restores the three-quarter perspective. Their shortcuts are Command-0, Command-1, and Command-2, respectively. Exported geometry lies in the XY plane, with its front toward +Z and no baked rotation. Preview cameras are never exported; the receiving app controls its own projection.
 
 ## Download
 
@@ -14,9 +18,9 @@ Download the latest build from [Releases](https://github.com/jeffalldridge/tubel
 
 ## How It Works
 
-Tubeline doesn't build each tube separately and stitch them together. It models the whole icon as a single solid, using a signed distance field built from every stroke, cap, joint, and fill, and then extracts one closed surface from it with dual contouring. That's why overlaps and crossings come out clean.
+Tubeline models the icon with a single signed distance field built from its strokes, caps, joints, and fills, then extracts a closed surface with dual contouring. Overlapping volumes fuse; disconnected marks remain separate closed components in the same mesh. Before export, the engine checks for boundary edges, non-manifold edges and vertices, collapsed or duplicate triangles, and inconsistent winding. Conversion stops with an error if these checks fail.
 
-It then simplifies the surface by collapsing edges, checking each change against the exact shape. Long straight runs and flat faces end up as a few large triangles, while curves and seams keep their detail. A typical 24 pt line icon comes out at 5,000–10,000 triangles, light enough to animate dozens at a time.
+It simplifies the surface by collapsing edges and sampling the distance to the exact shape across the changed triangles. Long straight runs and flat faces need fewer triangles, while curves and seams retain more detail. The preview reports the resulting triangle count and dimensions.
 
 | In the SVG | In the model |
 | --- | --- |
@@ -30,23 +34,36 @@ It then simplifies the surface by collapsing edges, checking each change against
 
 Tubeline also reads every `path` command (including arcs), `line`, `polyline`, `polygon`, `rect` (with rounded corners), `circle`, `ellipse`, groups, nested transforms, inline styles, simple CSS class rules like those Illustrator exports, and `display="none"`. It skips `<text>`, `<image>`, and `<use>` and tells you when it does; convert text to outlines before importing.
 
+Clipping, masks, filters, nested SVG viewports, and non-scaling strokes are unsupported and produce warnings. Nonuniform scale and shear approximate stroke thickness and also produce warnings. Check Conversion Warnings before using affected artwork. Re-add an SVG or click Refresh SVG after saving changes in your drawing app.
+
 ## Settings
 
 - **Thickness:** tube diameter as a multiple of the stroke width.
-- **Facets:** the number of sides around each tube (default 32). Shading uses normals from the exact surface, so tubes look round even with fewer facets. The preview shows the triangle count as you adjust it.
+- **Detail:** the target curve detail (default 32), under Advanced. This controls meshing density, rather than an exact count of polygon sides. Higher values make heavier meshes.
 - **Optimize Mesh:** simplifies the model (on by default). Turn it off to keep the dense mesh.
 - **Ends:** the SVG's own line caps, or always round or always flat.
 - **Intersections:** Crisp, Soft, or Round, with a slider to fine-tune the blend.
 - **Filled Shapes:** include or ignore fills, and set the extrusion depth (in points) and edge rounding for shapes that have no outline.
 - **Surface:** Solid Color, a flat color that ignores scene lighting, or Shaded, a matte finish that responds to lights. Either can be any color.
-- **Scale:** From Points (the default) treats one artwork point as 1/72 inch (0.3528 mm). Fixed Size scales the longest side to a length you set in centimeters.
+- **Scale:** Artwork Points (the default) treats artwork coordinates as design points, with one point equal to 1/72 inch (0.3528 mm). SVG Physical Size honors declared SVG dimensions and the standard ninety-six CSS pixels per inch. Fit Size scales the frame's longest side to a length in centimeters.
 - **Frame:** center the model on the SVG canvas, which keeps a set of icons aligned, or on the artwork itself.
+- **Output Scale:** a whole-number multiplier applied after sizing, with 1×, 10×, and 100× presets. This makes small icons practical in 3D apps that use larger working dimensions. It can follow the batch or be customized for one icon.
 
 Each file contains a single mesh with smooth normals and one `UsdPreviewSurface` material. Models are Y-up and measured in centimeters (`metersPerUnit = 0.01`), with no lights or cameras, and they pass Apple's `usdchecker`.
 
+App Settings lets you save the current batch settings as defaults for future sessions. Automatic export is off for new installations; you can enable it there after choosing your settings and destination. Cancel Export keeps completed files and stops remaining work. A conversion already meshing finishes its current stage before cancellation takes effect.
+
+### Sizing in Motion
+
+SVG user coordinates, CSS pixels, and print points are distinct. Physical SVG sizing follows `72 pt = 96 px = 1 in`, including the viewport-to-viewBox scale. Artwork Points preserves Tubeline's design-point convention for icon work. For example, a 48 pt canvas side becomes approximately 1.693 cm at the default conversion.
+
+For a larger working size, choose Output Scale 100×. A 24 pt canvas side then becomes approximately 84.67 cm, and a 48 pt canvas side becomes approximately 169.33 cm. The preview reports the final geometry dimensions, which may be smaller than the canvas frame. Output Scale changes the dimensions without increasing the triangle count.
+
+Motion's Automatic Unit Size normalizes imported objects to approximately 500 project pixels. Original uses a one-to-one units-to-pixels translation, and Custom lets you choose the inherent size. Physical USDZ dimensions alone do not specify a screen size in Motion. See [Apple's sizing controls](https://support.apple.com/guide/motion/modify-a-3d-objects-inherent-size-orientation-motn0e41f019/mac) and the [SVG coordinate specification](https://www.w3.org/TR/SVG2/coords.html).
+
 ## Building from Source
 
-You need an Apple silicon Mac with macOS 14 or later, Xcode 16 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). The Xcode project is generated from `app/project.yml` and isn't checked in.
+You need an Apple silicon Mac with macOS 14 or later, Xcode 26 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). The Xcode project is generated from `app/project.yml` and isn't checked in.
 
 ```bash
 cd app
@@ -62,6 +79,8 @@ The geometry engine is the `TubelineCore` Swift package at the root of the repos
 swift run -c release tubeline Samples -o /tmp/tubeline --png
 swift run tubeline --help
 ```
+
+The CLI also keeps existing files and disambiguates duplicate names. Pass `--replace` to replace existing outputs explicitly. Use `--physical` for SVG physical dimensions, `--pt` for an artwork-point conversion, or `--size` for a fixed frame size. Add `--scale 100` to multiply the final dimensions by one hundred.
 
 The `Samples` folder holds test SVGs that cover the edge cases. Put your own icons in `Samples/User`, which Git ignores.
 
