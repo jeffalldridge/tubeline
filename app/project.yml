@@ -20,6 +20,8 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: ACL5A8Y9U7
     SWIFT_APPROACHABLE_CONCURRENCY: YES
+    # Apple silicon only (decision 2026-10-22): the mesher is tuned for many-core arm64.
+    ARCHS: arm64
 
 targets:
   Tubeline:
@@ -47,9 +49,32 @@ targets:
         ENABLE_USER_SELECTED_FILES: readwrite
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
-    # When the Icon Composer AppIcon.icon lands, add the sibling icns-strip
-    # postBuild script WITH declared inputFiles (validator error 90236) —
-    # copy verbatim from readermd-app/project.yml.
+    # Xcode auto-generates an INCOMPLETE legacy AppIcon.icns from the Icon
+    # Composer source (Resources/AppIcon.icon) and injects CFBundleIconFile;
+    # App Store validation then fails with error 90236. Strip both so only the
+    # modern Assets.car icon is used. inputFiles force this to run after
+    # Info.plist processing (sibling-proven; see readermd-app/project.yml).
+    # Do NOT enable ENABLE_USER_SCRIPT_SANDBOXING: this script writes inside
+    # the built app without declared outputs.
+    postBuildScripts:
+      - name: "Strip incomplete legacy AppIcon.icns (use modern Assets.car only)"
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - "$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"
+          - "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AppIcon.icns"
+        script: |
+          set -euo pipefail
+          APP_PATH="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app"
+          ICNS="$APP_PATH/Contents/Resources/AppIcon.icns"
+          PLIST="$APP_PATH/Contents/Info.plist"
+          if [ -f "$ICNS" ]; then
+              rm -f "$ICNS"
+              echo "Removed incomplete legacy AppIcon.icns"
+          fi
+          if [ -f "$PLIST" ]; then
+              /usr/libexec/PlistBuddy -c "Delete :CFBundleIconFile" "$PLIST" 2>/dev/null || true
+              echo "Stripped stale CFBundleIconFile from Info.plist"
+          fi
 
   TubelineTests:
     type: bundle.unit-test

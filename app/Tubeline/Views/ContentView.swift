@@ -103,9 +103,10 @@ struct ContentView: View {
 struct DropPrompt: View {
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "scribble.variable")
-                .font(.system(size: 56, weight: .light))
-                .foregroundStyle(.secondary)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
+                .accessibilityHidden(true)
             Text("Drop SVG icons or folders here")
                 .font(.title2.weight(.medium))
             Text("Stroked paths become 3D tubes, saved as USDZ for Apple Motion.")
