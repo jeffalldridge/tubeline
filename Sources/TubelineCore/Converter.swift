@@ -122,19 +122,40 @@ public enum ConversionError: LocalizedError {
 }
 
 public enum Converter {
-    /// Converts an SVG file to a USDZ file. Returns statistics about the result.
+    /// File formats Tubeline writes, chosen by each output file's extension.
+    public enum Format: String, Codable, CaseIterable, Sendable {
+        case usdz, glb
+
+        public init?(url: URL) { self.init(rawValue: url.pathExtension.lowercased()) }
+    }
+
+    /// Converts an SVG file to a USDZ or GLB file, chosen by the output's extension.
     @discardableResult
     public static func convert(svg: URL, to output: URL, options: ConversionOptions) throws -> ConversionReport {
+        try convert(svg: svg, to: [output], options: options)
+    }
+
+    /// Converts an SVG file once and writes the same mesh to every output (for example, a .usdz
+    /// and a .glb). Returns statistics about the result.
+    @discardableResult
+    public static func convert(svg: URL, to outputs: [URL], options: ConversionOptions) throws -> ConversionReport {
         let start = Date()
         try Task.checkCancellation()
         let doc = try SVGParser.parse(url: svg, tolerance: 0.005)
         let mesh = try buildMesh(doc, options: options)
         let b = mesh.bounds
         var profiler = Profiler()
-        defer { profiler.lap("write USDZ") }
-        try Task.checkCancellation()
-        try USDZWriter.write(mesh: mesh, name: output.deletingPathExtension().lastPathComponent,
-                             color: parseHex(options.color), surface: options.surface, to: output)
+        for output in outputs {
+            try Task.checkCancellation()
+            let name = output.deletingPathExtension().lastPathComponent
+            switch Format(url: output) ?? .usdz {
+            case .usdz:
+                try USDZWriter.write(mesh: mesh, name: name, color: parseHex(options.color), surface: options.surface, to: output)
+            case .glb:
+                try GLBWriter.write(mesh: mesh, name: name, color: parseHex(options.color), surface: options.surface, to: output)
+            }
+            profiler.lap("write \(output.pathExtension.uppercased())")
+        }
         return ConversionReport(strokes: doc.strokes.count, fills: options.includeFills ? doc.fills.count : 0,
                                 vertices: mesh.positions.count, triangles: mesh.triangleCount, dimensions: b.size,
                                 skipped: Array(Set(doc.skipped + mesh.warnings)).sorted(), seconds: Date().timeIntervalSince(start))
@@ -325,7 +346,9 @@ public enum Converter {
         guard mesh.triangleCount > 0 else { throw ConversionError.emptyMesh }
         let physicalScale = Float(outputScale * Double(options.outputScale) / scale)
         mesh.positions = mesh.positions.map { $0 * physicalScale }
+        var validationProfiler = Profiler()
         let outputValidation = mesh.validation()
+        validationProfiler.lap("final validation")
         guard outputValidation.isValid else { throw ConversionError.invalidMesh(outputValidation.summary) }
         if voxel > requestedVoxel * 1.0001 {
             mesh.warnings.append("The artwork exceeded the sampling limit. Small details may be less accurate. Reduce the artwork's extent or increase narrow stroke widths for finer detail.")

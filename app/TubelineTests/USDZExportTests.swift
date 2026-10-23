@@ -200,3 +200,65 @@ final class USDZExportTests: XCTestCase {
         XCTAssertFalse(camera.camera?.usesOrthographicProjection == true)
     }
 }
+
+final class GLBExportTests: XCTestCase {
+    private func glb(surface: ConversionOptions.Surface) throws -> (json: [String: Any], bin: Data, mesh: Mesh) {
+        let svg = ##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>"##
+        let mesh = try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: ConversionOptions())
+        let data = GLBWriter.make(mesh: mesh, name: "plus", color: SIMD3(1, 0.5, 0), surface: surface)
+        func u32(_ at: Int) -> UInt32 { data.subdata(in: at..<at + 4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) } }
+        XCTAssertEqual(u32(0), 0x4654_6C67, "glTF magic")
+        XCTAssertEqual(u32(4), 2, "glTF version")
+        XCTAssertEqual(Int(u32(8)), data.count, "header length")
+        let jsonLength = Int(u32(12))
+        XCTAssertEqual(u32(16), 0x4E4F_534A, "JSON chunk")
+        XCTAssertEqual(jsonLength % 4, 0)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data.subdata(in: 20..<20 + jsonLength)) as? [String: Any])
+        let binStart = 20 + jsonLength
+        XCTAssertEqual(u32(binStart + 4), 0x004E_4942, "BIN chunk")
+        let bin = data.subdata(in: binStart + 8..<binStart + 8 + Int(u32(binStart)))
+        return (json, bin, mesh)
+    }
+
+    func testGLBLayoutUsesMetersAndMatchesTheMesh() throws {
+        let (json, bin, mesh) = try glb(surface: .solid)
+        let accessors = try XCTUnwrap(json["accessors"] as? [[String: Any]])
+        XCTAssertEqual(accessors[0]["count"] as? Int, mesh.positions.count)
+        XCTAssertEqual(accessors[2]["count"] as? Int, mesh.indices.count)
+        let max = try XCTUnwrap(accessors[0]["max"] as? [Double])
+        // Centimeters in the mesh become meters in glTF.
+        XCTAssertEqual(max[0], Double(mesh.bounds.max.x) / 100, accuracy: 1e-6)
+        let first = bin.subdata(in: 0..<12).withUnsafeBytes { SIMD3<Float>($0.loadUnaligned(as: Float.self),
+            $0.loadUnaligned(fromByteOffset: 4, as: Float.self), $0.loadUnaligned(fromByteOffset: 8, as: Float.self)) }
+        XCTAssertEqual(first, mesh.positions[0] / 100)
+    }
+
+    func testSolidColorIsUnlitAndShadedIsMatte() throws {
+        let solid = try glb(surface: .solid).json
+        XCTAssertEqual(solid["extensionsUsed"] as? [String], ["KHR_materials_unlit"])
+        let solidMaterial = try XCTUnwrap((solid["materials"] as? [[String: Any]])?.first)
+        XCTAssertNotNil((solidMaterial["extensions"] as? [String: Any])?["KHR_materials_unlit"])
+        let factor = try XCTUnwrap((solidMaterial["pbrMetallicRoughness"] as? [String: Any])?["baseColorFactor"] as? [Double])
+        // sRGB 0.5 is about 0.214 in linear light, which glTF expects.
+        XCTAssertEqual(factor[1], 0.214, accuracy: 0.001)
+
+        let shaded = try glb(surface: .shaded).json
+        XCTAssertNil(shaded["extensionsUsed"])
+        let pbr = try XCTUnwrap(((shaded["materials"] as? [[String: Any]])?.first?["pbrMetallicRoughness"]) as? [String: Any])
+        XCTAssertEqual(pbr["roughnessFactor"] as? Double, 0.5)
+        XCTAssertEqual(pbr["metallicFactor"] as? Double, 0)
+    }
+
+    func testConvertWritesEveryRequestedFormatFromOneMesh() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let svg = dir.appendingPathComponent("icon.svg")
+        try Data(##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="#000" stroke-width="2" fill="none"><path d="M4 12h16"/></svg>"##.utf8).write(to: svg)
+        let outputs = [dir.appendingPathComponent("icon.usdz"), dir.appendingPathComponent("icon.glb")]
+        try Converter.convert(svg: svg, to: outputs, options: ConversionOptions())
+        let usdz = try Data(contentsOf: outputs[0]), glb = try Data(contentsOf: outputs[1])
+        XCTAssertEqual(usdz.prefix(4), Data([0x50, 0x4B, 0x03, 0x04]), "USDZ is a zip package")
+        XCTAssertEqual(glb.prefix(4), Data("glTF".utf8))
+    }
+}

@@ -86,7 +86,7 @@ final class AppModelTests: XCTestCase {
         let job = Job(source: URL(fileURLWithPath: "/tmp/example.svg"))
         model.jobs = [job]
         model.destination = .folder
-        XCTAssertNil(model.outputURL(for: job))
+        XCTAssertNil(model.outputStem(for: job))
         model.exportAll()
         XCTAssertFalse(model.isExporting)
         XCTAssertNotNil(model.exportError)
@@ -99,7 +99,8 @@ final class AppModelTests: XCTestCase {
         let started = expectation(description: "Conversion started")
         let gate = DispatchSemaphore(value: 0)
         let result = report()
-        let worker = ConversionQueue { _, output, options in
+        let worker = ConversionQueue { _, outputs, options in
+            let output = outputs[0]
             started.fulfill()
             guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
             try Data(String(options.thickness).utf8).write(to: output)
@@ -121,6 +122,37 @@ final class AppModelTests: XCTestCase {
         guard case .exported = job.status else { return XCTFail("Returning to the exported settings should restore freshness") }
     }
 
+    func testBothFormatsExportTogetherUnderOneUniqueName() async throws {
+        let dir = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let result = report()
+        let worker = ConversionQueue { _, outputs, _ in
+            for output in outputs { try Data(output.pathExtension.utf8).write(to: output) }
+            return result
+        }
+        let defaults = makeDefaults()
+        let model = AppModel(defaults: defaults, worker: worker, authorizeFolders: { _ in [] })
+        model.exportFormat = .both
+        let source = dir.appendingPathComponent("icon.svg")
+        try Data("svg".utf8).write(to: source)
+        // Only the GLB name is taken; both files must still move to the next free name together.
+        try Data("existing".utf8).write(to: dir.appendingPathComponent("icon.glb"))
+        let job = Job(source: source)
+        model.jobs = [job]
+        model.exportAll()
+        try await waitForExport(model)
+        XCTAssertEqual(job.lastExportURLs.map(\.lastPathComponent), ["icon 2.usdz", "icon 2.glb"])
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("icon 2.glb"), encoding: .utf8), "glb")
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("icon.glb"), encoding: .utf8), "existing")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("icon.usdz").path))
+        guard case .exported = job.status else { return XCTFail("The export should be current") }
+
+        // The format is remembered, and changing it marks the export as out of date.
+        XCTAssertEqual(AppModel(defaults: defaults, worker: worker).exportFormat, .both)
+        model.exportFormat = .glb
+        guard case .outdated = job.status else { return XCTFail("A different format needs a new export") }
+    }
+
     func testCancelDoesNotPublishRunningConversionOrStartQueuedJobs() async throws {
         let dir = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -128,7 +160,8 @@ final class AppModelTests: XCTestCase {
         let finished = expectation(description: "Worker finished")
         let gate = DispatchSemaphore(value: 0)
         let result = report()
-        let worker = ConversionQueue { _, output, _ in
+        let worker = ConversionQueue { _, outputs, _ in
+            let output = outputs[0]
             started.fulfill()
             guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
             try Data("temporary".utf8).write(to: output)
@@ -184,7 +217,8 @@ final class AppModelTests: XCTestCase {
 
     func testFailedNewPreviewCannotDisplayPreviousIcon() async throws {
         let result = report()
-        let worker = ConversionQueue { source, output, _ in
+        let worker = ConversionQueue { source, outputs, _ in
+            let output = outputs[0]
             if source.lastPathComponent == "broken.svg" { throw CocoaError(.fileReadCorruptFile) }
             try Data("preview".utf8).write(to: output)
             return result
@@ -212,7 +246,8 @@ final class AppModelTests: XCTestCase {
             let secondStarted = expectation(description: "Second conversion started")
             let gate = DispatchSemaphore(value: 0)
             let result = report()
-            let worker = ConversionQueue { source, output, _ in
+            let worker = ConversionQueue { source, outputs, _ in
+            let output = outputs[0]
                 if source.lastPathComponent == "second.svg" {
                     secondStarted.fulfill()
                     guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
@@ -251,7 +286,8 @@ final class AppModelTests: XCTestCase {
         let started = expectation(description: "Initial export started")
         let gate = DispatchSemaphore(value: 0)
         let result = report()
-        let worker = ConversionQueue { source, output, options in
+        let worker = ConversionQueue { source, outputs, options in
+            let output = outputs[0]
             if output.deletingLastPathComponent().lastPathComponent.hasPrefix(".Tubeline-"),
                output.lastPathComponent == "first.usdz" {
                 started.fulfill()
@@ -292,7 +328,8 @@ final class AppModelTests: XCTestCase {
             let finished = expectation(description: "Canceled worker finished")
             let gate = DispatchSemaphore(value: 0)
             let result = report()
-            let worker = ConversionQueue { _, output, _ in
+            let worker = ConversionQueue { _, outputs, _ in
+            let output = outputs[0]
                 started.fulfill()
                 guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
                 try Data("temporary".utf8).write(to: output)
@@ -331,7 +368,8 @@ final class AppModelTests: XCTestCase {
         try Data("broken".utf8).write(to: source)
         let attempted = expectation(description: "Automatic export attempted once")
         attempted.assertForOverFulfill = true
-        let worker = ConversionQueue { _, output, _ in
+        let worker = ConversionQueue { _, outputs, _ in
+            let output = outputs[0]
             if output.deletingLastPathComponent().lastPathComponent.hasPrefix(".Tubeline-") { attempted.fulfill() }
             throw CocoaError(.fileReadCorruptFile)
         }

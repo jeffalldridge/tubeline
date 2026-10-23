@@ -28,7 +28,14 @@ struct ExportBar: View {
                 }
             }
             HStack(spacing: 12) {
-                Text("USDZ").font(.callout.weight(.semibold)).foregroundStyle(.secondary)
+                Picker("Format", selection: Binding(get: { model.exportFormat }, set: { model.exportFormat = $0 })) {
+                    ForEach(ExportFormat.allCases, id: \.self) { format in
+                        Text(format.title).tag(format)
+                    }
+                }
+                .fixedSize()
+                .disabled(model.isExporting)
+                .help(model.exportFormat.help)
                 Divider().frame(height: 22)
                 Picker("Save To", selection: destinationBinding) {
                     Text("Next to Original").tag(AppModel.Destination.besideOriginal)

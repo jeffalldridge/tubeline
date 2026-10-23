@@ -7,11 +7,13 @@ let version = "0.2.0"
 let usage = """
 Usage: tubeline [options] <file.svg | folder> ...
 
-Turns stroked SVG icons into 3D tube models (USDZ) for Apple Motion and other
-motion graphics apps that import USDZ.
+Turns stroked SVG icons into 3D tube models for motion graphics apps: USDZ for
+Apple Motion, or GLB for After Effects, Cinema 4D, and Blender.
 
 Output:
   -o, --output <folder>     Save models here (default: next to each SVG)
+  --format <usdz|glb|both>  File format: USDZ for Apple Motion and Apple apps, GLB for
+                            After Effects, Cinema 4D, and Blender (default usdz)
   --replace                 Replace existing exports (default: keep both)
   --png                     Also save a preview image next to each model
   --png-size <pixels>       Size of the preview image (default 1024)
@@ -57,6 +59,7 @@ var renderPNG = false
 var pngSize = 1024.0
 var pngTransparent = false
 var replaceExisting = false
+var formats: [Converter.Format] = [.usdz]
 
 var args = CommandLine.arguments.dropFirst()
 
@@ -88,6 +91,13 @@ while let a = args.popFirst() {
     case "--version": print("tubeline \(version)"); exit(0)
     case "-o", "--output": outputDir = URL(fileURLWithPath: value(a))
     case "--replace": replaceExisting = true
+    case "--format":
+        switch value(a) {
+        case "usdz": formats = [.usdz]
+        case "glb": formats = [.glb]
+        case "both": formats = [.usdz, .glb]
+        default: fail("--format must be one of: usdz, glb, both")
+        }
     case "--png": renderPNG = true
     case "--png-size": pngSize = number(a, in: 64...8192); renderPNG = true
     case "--png-transparent": pngTransparent = true; renderPNG = true
@@ -138,23 +148,25 @@ if let outputDir {
 }
 
 // Reserve the whole batch before writing so identical names never replace one another,
-// even when replacement of older exports was explicitly requested.
+// even when replacement of older exports was explicitly requested. Each icon reserves one
+// name (stem) for all of its files: every chosen format, plus the preview image.
 var reservedPaths = Set<String>()
 func pathKey(_ url: URL) -> String { url.standardizedFileURL.path.lowercased() }
+func targets(_ stem: URL) -> [URL] {
+    formats.map { stem.appendingPathExtension($0.rawValue) } + (renderPNG ? [stem.appendingPathExtension("png")] : [])
+}
 let exports = files.map { svg -> (URL, URL) in
     let dir = outputDir ?? svg.deletingLastPathComponent()
     let name = svg.deletingPathExtension().lastPathComponent
     var suffix = 1
     while true {
-        let stem = suffix == 1 ? name : "\(name) \(suffix)"
-        let out = dir.appendingPathComponent(stem).appendingPathExtension("usdz")
-        let targets = renderPNG ? [out, out.deletingPathExtension().appendingPathExtension("png")] : [out]
-        let collides = targets.contains {
+        let stem = dir.appendingPathComponent(suffix == 1 ? name : "\(name) \(suffix)")
+        let collides = targets(stem).contains {
             reservedPaths.contains(pathKey($0)) || (!replaceExisting && FileManager.default.fileExists(atPath: $0.path))
         }
         if !collides {
-            for target in targets { reservedPaths.insert(pathKey(target)) }
-            return (svg, out)
+            for target in targets(stem) { reservedPaths.insert(pathKey(target)) }
+            return (svg, stem)
         }
         suffix += 1
     }
@@ -170,55 +182,73 @@ func publishFile(_ staged: URL, to destination: URL) throws {
     }
 }
 
-func publishModel(_ staged: URL, proposed: URL) throws -> URL {
-    var candidate = proposed
+/// Publishes every staged model under one stem, moving to the next free stem if another
+/// process takes a name first. Returns the published model files.
+func publishModels(_ staged: [URL], proposed: URL) throws -> [URL] {
+    var stem = proposed
     var suffix = 2
     while true {
-        let png = candidate.deletingPathExtension().appendingPathExtension("png")
-        let targets = renderPNG ? [candidate, png] : [candidate]
-        let reservedByAnotherJob = candidate != proposed && targets.contains { reservedPaths.contains(pathKey($0)) }
+        let reservedByAnotherJob = stem != proposed && targets(stem).contains { reservedPaths.contains(pathKey($0)) }
+        let png = stem.appendingPathExtension("png")
         if !reservedByAnotherJob && (replaceExisting || !renderPNG || !FileManager.default.fileExists(atPath: png.path)) {
+            var published: [URL] = []
             do {
-                try publishFile(staged, to: candidate)
-                for target in targets { reservedPaths.insert(pathKey(target)) }
-                return candidate
+                for file in staged {
+                    let destination = stem.appendingPathExtension(file.pathExtension)
+                    try publishFile(file, to: destination)
+                    published.append(destination)
+                }
+                for target in targets(stem) { reservedPaths.insert(pathKey(target)) }
+                return published
             } catch {
                 let error = error as NSError
                 guard !replaceExisting, error.domain == NSPOSIXErrorDomain, error.code == Int(EEXIST) else { throw error }
+                // Another process took one of the names. Take back what this attempt published
+                // so the icon's files stay together under the next free name.
+                for (file, destination) in zip(staged, published) { _ = renamex_np(destination.path, file.path, 0) }
             }
         }
-        candidate = proposed.deletingLastPathComponent()
-            .appendingPathComponent("\(proposed.deletingPathExtension().lastPathComponent) \(suffix)")
-            .appendingPathExtension("usdz")
+        stem = proposed.deletingLastPathComponent()
+            .appendingPathComponent("\(proposed.lastPathComponent) \(suffix)")
         suffix += 1
     }
 }
 
 var failures = 0
-for (svg, out) in exports {
-    let stagingDirectory = out.deletingLastPathComponent()
+for (svg, stem) in exports {
+    let stagingDirectory = stem.deletingLastPathComponent()
         .appendingPathComponent(".Tubeline-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: stagingDirectory) }
     do {
         // A sibling directory keeps publication on the same volume, where rename is atomic.
         try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
-        let stagedModel = stagingDirectory.appendingPathComponent(out.lastPathComponent)
-        let r = try Converter.convert(svg: svg, to: stagedModel, options: options)
-        let final = try publishModel(stagedModel, proposed: out)
+        let stagedModels = formats.map {
+            stagingDirectory.appendingPathComponent(stem.lastPathComponent).appendingPathExtension($0.rawValue)
+        }
+        // Previews render through SceneKit, which reads USDZ, so a GLB-only export still
+        // writes a private USDZ copy for the image.
+        let previewSource = stagingDirectory.appendingPathComponent("preview.usdz")
+        let needsPreviewSource = renderPNG && !formats.contains(.usdz)
+        let r = try Converter.convert(svg: svg, to: stagedModels + (needsPreviewSource ? [previewSource] : []),
+                                      options: options)
+        let published = try publishModels(stagedModels, proposed: stem)
+        let paths = published.map(\.path).joined(separator: ", ")
         var line = String(format: "✓ %@ → %@ (%.2f × %.2f × %.2f cm, %@ triangles, %.2f s)",
-                          svg.lastPathComponent, final.path,
+                          svg.lastPathComponent, paths,
                           r.dimensions.x, r.dimensions.y, r.dimensions.z, r.triangles.formatted(), r.seconds)
         if !r.skipped.isEmpty { line += "; warnings: " + r.skipped.joined(separator: ", ") }
         if renderPNG {
+            let modelStem = published[0].deletingPathExtension()
             do {
                 let stagedPNG = stagingDirectory.appendingPathComponent("preview.png")
-                try PreviewScene.renderPNG(usdz: final, to: stagedPNG,
+                let source = published.first { $0.pathExtension == "usdz" } ?? previewSource
+                try PreviewScene.renderPNG(usdz: source, to: stagedPNG,
                                            size: CGSize(width: pngSize, height: pngSize),
                                            transparent: pngTransparent, tilt: pngTransparent ? 0 : 0.35)
-                try publishFile(stagedPNG, to: final.deletingPathExtension().appendingPathExtension("png"))
+                try publishFile(stagedPNG, to: modelStem.appendingPathExtension("png"))
             } catch {
                 failures += 1
-                FileHandle.standardError.write(Data("\(svg.lastPathComponent): model saved to \(final.path), but the preview image failed: \(error.localizedDescription)\n".utf8))
+                FileHandle.standardError.write(Data("\(svg.lastPathComponent): model saved to \(paths), but the preview image failed: \(error.localizedDescription)\n".utf8))
                 continue
             }
         }
