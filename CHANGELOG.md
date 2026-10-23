@@ -4,6 +4,32 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- GLB (binary glTF 2.0) export for After Effects, Cinema 4D, Blender, and web tools. Choose USDZ, GLB, or both from the Format menu in the export bar, or pass `--format usdz|glb|both` to the CLI. USDZ remains the default. GLB models use meters with Y up, and Solid Color uses an unlit material so it stays flat. Both files are written from the same mesh and share one name.
+
+### Fixed
+
+- Fill-only artwork that omits SVG’s default black fill extrudes without an invented outline. Zero-width strokes no longer suppress a fill’s extrusion depth. Explicitly stroked line icons retain their existing fill handling.
+- Invalid numeric edits show field-specific guidance without changing applied settings. Saved defaults reject invalid values, and untouched fields preserve calibration precision.
+- Preview accessibility reports unavailable content accurately and identifies same-name icons by source folder and path.
+- Concurrent CLI exports publish without replacing another process's file. A late preview-image collision preserves the existing PNG and reports partial success.
+- Removing a completed or failed row no longer cancels the remaining batch.
+- Automatic export queues SVGs added or refreshed during an active batch, uses current settings when each request starts, and clears queued requests on Cancel.
+
+### Changed
+
+- Where strokes cross or nearly touch, the mesher now gives each separate sheet of surface its own vertex and faces every quad exactly, so far fewer icons need the denser fallback mesh. Across the 162-icon test corpus, fallbacks dropped from 42 icons to 2, total conversion time from 408 s to 186 s, and the slowest icon from 29 s to 6.2 s; former fallback icons now average about 58,000 triangles instead of 147,000.
+- Mesh Detail is a standalone control pinned above the scrolling settings. Its slider spans 6–64, with Draft, Low, Balanced, and High presets; App Settings uses the same range.
+- View menu commands provide camera controls and discrete orbit actions. Export cancellation supports Escape and Command-period, and icon removal is available from the menu and list keyboard handling.
+- The window supports a smaller minimum size, long destination names have bounded width, and single-icon exports avoid a redundant selected-item button. Camera inertia respects Reduce Motion.
+- Detail and Optimize Mesh appear first in the main settings panel, with Low, Balanced, and High detail presets. Intersection blending and fill depth are exposed in their regular sections; only unit calibration remains collapsed.
+- App Settings directly edits saved defaults for mesh detail, optimization, thickness, and output scale without changing an active batch.
+
+- Meshing retries skip additional diagnostics after a mesh is already known to be invalid. Complete validation reports and acceptance rules are unchanged.
+- Release preflight checks the built app's copyright, category, encryption declaration, and privacy-manifest syntax.
+- Orientation tests now detect vertical mirroring in both the generated mesh and reloaded USDZ.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added

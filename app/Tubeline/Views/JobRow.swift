@@ -16,13 +16,14 @@ struct JobRow: View {
                 }
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 Text(job.source.deletingLastPathComponent().lastPathComponent)
-                    .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .padding(.vertical, 3)
-        .help(job.exportedURL?.path ?? job.source.path)
+        .help("Source: \(job.source.path)" + (job.exportedURL.map { "\nExport: \($0.path)" } ?? ""))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(job.name), \(detail)\(job.hasOverrides ? ", custom settings" : "")")
+        .accessibilityLabel("\(job.name), source folder \(job.source.deletingLastPathComponent().lastPathComponent), \(accessibilityStatus)\(job.hasOverrides ? ", custom settings" : "")")
+        .accessibilityValue("Source: \(job.source.path)")
     }
 
     @ViewBuilder private var statusIcon: some View {
@@ -52,6 +53,14 @@ struct JobRow: View {
         case .outdated: "Changed—Export Again"
         case .failed(let message): message
         case .cancelled: "Canceled"
+        }
+    }
+
+    private var accessibilityStatus: String {
+        switch job.status {
+        case .exported: job.stats == nil ? "Exported" : "Exported, \(detail)"
+        case .failed: "Export Failed, \(detail)"
+        default: detail
         }
     }
 }

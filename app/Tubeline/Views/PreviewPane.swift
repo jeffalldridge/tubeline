@@ -3,7 +3,6 @@ import SwiftUI
 struct PreviewPane: View {
     @Environment(AppModel.self) private var model
     @AppStorage("showForm") private var showForm = false
-    @State private var cameraRequest = PreviewCameraRequest()
     @State private var renderingError: String?
 
     var body: some View {
@@ -24,14 +23,14 @@ struct PreviewPane: View {
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Triangle Count")
-                    .accessibilityValue(model.previewStats.map { $0.triangles.formatted() } ?? "Updating")
+                    .accessibilityValue(model.previewStats.map { $0.triangles.formatted() } ?? (model.previewBusy ? "Updating" : "Unavailable"))
                     Button("Refresh SVG", systemImage: "arrow.clockwise") { model.refreshSelected() }
                         .labelStyle(.iconOnly).help("Reload changes saved in your SVG editor.")
                 }
                 .padding(16)
                 Divider()
                 ZStack {
-                    ModelPreview(url: model.previewURL, subject: model.selection, showForm: showForm, cameraRequest: cameraRequest, renderingError: $renderingError)
+                    ModelPreview(url: model.previewURL, subject: model.selection, showForm: showForm, cameraRequest: model.cameraRequest, renderingError: $renderingError)
                         .accessibilityLabel("3D Preview of \(job.name)")
                         .accessibilityValue(previewDescription)
                     if model.previewBusy && model.previewURL == nil {
@@ -67,17 +66,15 @@ struct PreviewPane: View {
                 }
                 .overlay(alignment: .bottomLeading) {
                     HStack(spacing: 12) {
-                        Button("Fit") { cameraRequest = PreviewCameraRequest(mode: .fit) }
-                            .keyboardShortcut("0", modifiers: .command)
+                        Button("Fit") { model.cameraRequest = PreviewCameraRequest(mode: .fit) }
                             .help("Frame the model without changing the viewing angle (Command-0).")
-                        Button("Front") { cameraRequest = PreviewCameraRequest(mode: .front) }
-                            .keyboardShortcut("1", modifiers: .command)
+                        Button("Front") { model.cameraRequest = PreviewCameraRequest(mode: .front) }
                             .help("View the SVG head-on without perspective (Command-1).")
-                        Button("Reset View") { cameraRequest = PreviewCameraRequest(mode: .reset) }
-                            .keyboardShortcut("2", modifiers: .command)
+                        Button("Reset View") { model.cameraRequest = PreviewCameraRequest(mode: .reset) }
                             .help("Restore the default viewing angle and framing (Command-2).")
                         if model.previewBusy { ProgressView().controlSize(.small) }
                     }
+                    .disabled(model.previewURL == nil)
                     .controlSize(.small).padding(10)
                     .background(.regularMaterial, in: .rect(cornerRadius: 8))
                     .padding(12)
@@ -122,7 +119,7 @@ struct PreviewPane: View {
 
     private var previewDescription: String {
         guard let stats = model.previewStats else { return model.previewBusy ? "Building preview" : "No model available" }
-        return "\(stats.triangles) triangles, \(dimensions(stats.dimensions)), \(cameraRequest.mode == .front ? "Front view" : "3D view")"
+        return "\(stats.triangles) triangles, \(dimensions(stats.dimensions))"
     }
 
     private func dimensions(_ size: SIMD3<Double>) -> String {

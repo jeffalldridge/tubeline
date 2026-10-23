@@ -10,7 +10,7 @@ struct TubelineApp: App {
         Window("Tubeline", id: "main") {
             ContentView()
                 .environment(model)
-                .frame(minWidth: 1080, minHeight: 680)
+                .frame(minWidth: 940, minHeight: 560)
         }
         .defaultSize(width: 1180, height: 720)
         .commands {
@@ -20,6 +20,7 @@ struct TubelineApp: App {
             }
             CommandMenu("Icons") {
                 Button("Export All") { model.exportAll() }
+                    .keyboardShortcut("e")
                     .disabled(model.jobs.isEmpty || model.isExporting)
                 Button("Export Selected") { model.exportSelected() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
@@ -29,6 +30,33 @@ struct TubelineApp: App {
                     .disabled(model.selectedJob == nil)
                 Button("Show Export in Finder") { model.revealSelectedExport() }
                     .disabled(model.selectedJob?.exportedURL == nil)
+                Divider()
+                Button(model.selectedJob?.status == .working ? "Cancel Export and Remove Icon" : "Remove Selected Icon") {
+                    if let job = model.selectedJob { model.remove(job) }
+                }
+                .disabled(model.selectedJob == nil)
+                Button("Cancel Export") { model.cancelExports() }
+                    .keyboardShortcut(".", modifiers: .command)
+                    .disabled(!model.isExporting)
+            }
+            CommandGroup(after: .sidebar) {
+                Divider()
+                Button("Fit Model") { model.cameraRequest = PreviewCameraRequest(mode: .fit) }
+                    .keyboardShortcut("0")
+                    .disabled(model.previewURL == nil)
+                Button("Front View") { model.cameraRequest = PreviewCameraRequest(mode: .front) }
+                    .keyboardShortcut("1")
+                    .disabled(model.previewURL == nil)
+                Button("Reset View") { model.cameraRequest = PreviewCameraRequest(mode: .reset) }
+                    .keyboardShortcut("2")
+                    .disabled(model.previewURL == nil)
+                Menu("Orbit Model") {
+                    Button("Left") { model.cameraRequest = PreviewCameraRequest(mode: .orbitLeft) }
+                    Button("Right") { model.cameraRequest = PreviewCameraRequest(mode: .orbitRight) }
+                    Button("Up") { model.cameraRequest = PreviewCameraRequest(mode: .orbitUp) }
+                    Button("Down") { model.cameraRequest = PreviewCameraRequest(mode: .orbitDown) }
+                }
+                .disabled(model.previewURL == nil)
             }
         }
         Settings {

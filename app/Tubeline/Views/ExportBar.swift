@@ -16,6 +16,8 @@ struct ExportBar: View {
                         .font(.callout.monospacedDigit())
                     Spacer()
                     Button("Cancel Export") { model.cancelExports() }
+                        .keyboardShortcut(.cancelAction)
+                        .help("Stop unfinished exports (Escape or Command-period). Completed files are kept.")
                 }
             } else if let summary = model.exportSummary {
                 HStack {
@@ -26,7 +28,14 @@ struct ExportBar: View {
                 }
             }
             HStack(spacing: 12) {
-                Text("USDZ").font(.callout.weight(.semibold)).foregroundStyle(.secondary)
+                Picker("Format", selection: Binding(get: { model.exportFormat }, set: { model.exportFormat = $0 })) {
+                    ForEach(ExportFormat.allCases, id: \.self) { format in
+                        Text(format.title).tag(format)
+                    }
+                }
+                .fixedSize()
+                .disabled(model.isExporting)
+                .help(model.exportFormat.help)
                 Divider().frame(height: 22)
                 Picker("Save To", selection: destinationBinding) {
                     Text("Next to Original").tag(AppModel.Destination.besideOriginal)
@@ -42,17 +51,19 @@ struct ExportBar: View {
                             .lineLimit(1).truncationMode(.middle)
                     }
                     .help(model.folder?.path ?? "Choose an output folder.")
+                    .frame(maxWidth: 180)
                     .disabled(model.isExporting)
                 }
                 Spacer(minLength: 8)
                 if model.selectedJob?.exportedURL != nil {
                     Button("Show in Finder") { model.revealSelectedExport() }
                 }
-                Button("Export Selected") { model.exportSelected() }
-                    .disabled(model.selectedJob == nil || model.isExporting || (model.destination == .folder && model.folder == nil))
+                if model.jobs.count > 1 {
+                    Button("Export Selected") { model.exportSelected() }
+                        .disabled(model.selectedJob == nil || model.isExporting || (model.destination == .folder && model.folder == nil))
+                }
                 Button(exportTitle) { model.exportAll() }
                     .buttonStyle(.borderedProminent)
-                    .keyboardShortcut("e", modifiers: .command)
                     .disabled(model.jobs.isEmpty || model.isExporting || (model.destination == .folder && model.folder == nil))
             }
             Text("Existing files are kept. New exports receive a unique name when needed.")
@@ -64,7 +75,11 @@ struct ExportBar: View {
     }
 
     private var exportTitle: String {
-        model.jobs.count == 1 ? "Export Icon" : "Export \(model.jobs.count) Icons"
+        switch model.jobs.count {
+        case 0: "Export Icons"
+        case 1: "Export Icon"
+        case let count: "Export \(count) Icons"
+        }
     }
 
     private var failedJobs: [Job] {

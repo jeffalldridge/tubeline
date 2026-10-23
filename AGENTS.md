@@ -4,11 +4,11 @@ This file is the single source of truth for AI sessions in this repository. `CLA
 
 ## Identity
 
-- **Product:** Tubeline, a native Mac app that turns stroked SVG icons into 3D tube models saved as USDZ, for Apple Motion and other motion graphics apps. Each stroke becomes a round tube, and crossings fuse cleanly.
+- **Product:** Tubeline, a native Mac app that turns stroked SVG icons into 3D tube models for motion graphics apps: USDZ for Apple Motion (the default) and GLB for After Effects, Cinema 4D, and Blender. Each stroke becomes a round tube, and crossings fuse cleanly.
 - **Not:** a 3D modeler, a renderer, or a general SVG extruder. Exported files have no textures, UV maps, lights, or cameras.
 - **Publisher:** Tent Studios, LLC (Jeff Alldridge), Apple Developer team `ACL5A8Y9U7`.
 - **Price and license:** free, MIT License, public repository at github.com/jeffalldridge/tubeline.
-- **Distribution:** notarized Developer ID builds on GitHub Releases (version 0.1.0 shipped October 22, 2026). The Mac App Store may come later.
+- **Distribution:** notarized Developer ID builds on GitHub Releases (version 0.2.0 shipped October 22, 2026). The Mac App Store may come later.
 - **Platform:** Apple silicon Macs running macOS 14 or later. No Intel builds.
 - **Philosophy:** it should feel like something Apple could have shipped. Use Apple's frameworks and avoid third-party dependencies unless one clearly earns its place. The output should never need cleanup by a motion designer.
 
@@ -16,18 +16,18 @@ This file is the single source of truth for AI sessions in this repository. `CLA
 
 **Every icon becomes one closed solid.** Strokes, caps, joints, dashes, and fills are modeled as a single signed distance field and meshed once. Never mesh tubes separately and stitch them together, and never leave interior faces; clean intersections are the product. Any optimization must keep the mesh closed, with no boundary edges. `MeshingTests.assertWatertight` checks this.
 
-Disconnected marks may form separate closed components in the same mesh. Where a dual-contouring cell joins surface sheets incorrectly, the engine retries the same sampled union with consistent tetrahedra. It validates edge incidence, winding, vertex neighborhoods, and degenerate or duplicate faces before export. The fallback can produce heavier meshes; contouring improvements remain tracked in issue #4.
+Disconnected marks may form separate closed components in the same mesh. Dual contouring gives each separate sheet of surface in a cell its own vertex (sheets are grouped per cube face with the asymptotic decider, so neighbors agree), and quads face from each grid edge's inside end to its outside end. In the rare case where a cell still joins sheets incorrectly, the engine retries the same sampled union with consistent tetrahedra. It validates edge incidence, winding, vertex neighborhoods, and degenerate or duplicate faces before export. The fallback produces heavier meshes but is now rare (2 of 162 corpus icons); issue #4 tracks the rest.
 
 ## How the Engine Works
 
 The engine is the `TubelineCore` Swift package at the repository root. A conversion (`Converter.convert`) runs these steps:
 
-1. **Parse** (`SVGDocument.swift`, `PathData.swift`, `Dasher.swift`): read shapes, transforms, styles, and CSS classes; flatten curves into polylines; split dashes. Only fills the file declares count, never SVG's implicit black fill.
+1. **Parse** (`SVGDocument.swift`, `PathData.swift`, `Dasher.swift`): read shapes, transforms, styles, and CSS classes; flatten curves into polylines; split dashes. Honor default black fills when no stroke paint is declared. Explicitly stroked line art still requires an explicit fill; never invent a stroke for an unstyled shape.
 2. **Model** (`Converter.buildMesh`): turn strokes into primitives (capsules, capped cylinders, spheres) and fills into slabs or extrusions, grouped so fillets blend only between separate strokes. Scale from artwork points to centimeters.
 3. **Sample and contour** (`FusedMesher.swift`): sample the exact distance on a grid in parallel, using `SpatialLookup`, then extract a surface with dual contouring so creases stay sharp. Meshing uses normalized internal units; physical sizing is applied afterward. Invalid contour topology triggers a tetrahedral extraction from the same whole-icon field.
 4. **Simplify** (`Decimator.swift`): collapse edges by quadric error, testing surface distance at the proposed vertex and sample points across changed triangles. Tiles run in parallel; a final pass cleans up the seams between them. These probes are a sampled error criterion, not a proof of the maximum error over every triangle.
 5. **Shade and order**: take normals from the exact surface, split them at creases, and reorder triangles for the GPU (`MeshOrdering.swift`).
-6. **Write** (`USDZWriter.swift`): write USD text with exact types, convert it to binary with macOS's `usdcat`, and package it as USDZ with our own zip writer. Model I/O was rejected because its output fails `usdchecker`.
+6. **Write** (`USDZWriter.swift`, `GLBWriter.swift`): USDZ writes USD text with exact types, converts it to binary with macOS's `usdcat`, and packages it with our own zip writer; Model I/O was rejected because its output fails `usdchecker`. GLB is written directly as binary glTF 2.0 in meters, with `KHR_materials_unlit` for Solid Color and linear color values. `Converter.convert(svg:to:)` takes several outputs and writes every format from one mesh.
 
 `PreviewRenderer.swift` builds the SceneKit scene for the app's preview and for the CLI's `--png` renders. Set `TL_PROFILE=1` to print timings for each stage.
 
@@ -63,7 +63,7 @@ swift run -c release tubeline Samples -o /tmp/out --png
 for f in /tmp/out/*.usdz; do usdchecker --arkit "$f"; done
 ```
 
-The app-hosted suite includes engine tests and app-state regressions. CI (`.github/workflows/ci.yml`) also runs the standalone engine tests, converts the original samples, and validates USDZ on an Apple silicon runner with Xcode 26.
+The app-hosted suite includes engine tests and app-state regressions. CI (`.github/workflows/ci.yml`) also runs the standalone engine tests, converts the original samples to both formats, validates USDZ with `usdchecker --arkit` and GLB with the Khronos glTF Validator (`scripts/validate-glb.mjs`), on an Apple silicon runner with Xcode 26.
 
 ## Releases
 
@@ -86,9 +86,9 @@ Follow [RELEASING.md](docs/release/RELEASING.md). `scripts/release.sh --publish`
 | 2 | Testing in motion graphics apps, starting with Apple Motion (issue #3) | Open |
 | 3 | Lighter, faster meshes | Done; manifold contouring (issue #4) is still open |
 | 4 | Polish: Settings window, accessibility, HIG review | Open |
-| 5 | Ship: notarized build, icon, public repository | 0.1.0 released; trademark check still open |
+| 5 | Ship: notarized build, icon, public repository | 0.2.0 released; trademark check still open |
 
-The public plan is [ROADMAP.md](ROADMAP.md). Every item there is a GitHub issue labeled `roadmap`; keep the file and the issues in sync, and move finished work to [CHANGELOG.md](CHANGELOG.md). USDZ is always the default export format, and GLB export for After Effects (issue #2) is next.
+The public plan is [ROADMAP.md](ROADMAP.md). Every item there is a GitHub issue labeled `roadmap`; keep the file and the issues in sync, and move finished work to [CHANGELOG.md](CHANGELOG.md). USDZ is always the default export format; GLB is the alternative for After Effects and other apps.
 
 ## Conventions
 

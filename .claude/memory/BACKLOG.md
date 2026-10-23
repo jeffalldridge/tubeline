@@ -28,7 +28,9 @@ The public roadmap is ROADMAP.md plus GitHub issues labeled `roadmap` (issues #2
 ## Polish and Shipping
 
 - [x] Original icon glyph rendered by Tubeline replaced the SF Symbol (October 22, 2026).
-- [x] Notarized 0.1.0 release with DMG, CLI, and checksums (October 22, 2026).
+- [x] Notarized 0.1.0 and 0.2.0 releases with DMG, CLI, and checksums (October 22, 2026).
+- [x] GitHub compiled and tested the exact 0.2.0 release commit (`0fba569`), run `39860251368`.
+- [x] Post-release batch queue fixes and validator optimization on `codex/mesh-optimization`; sixty-one app tests, forty-four core tests, and all 162 corpus outputs unchanged.
 - [ ] Add release signing secrets to the repository so tags can release from CI.
 - [ ] Merge or close Dependabot's `actions/checkout` update (pull request #1).
 - [x] Settings window, camera keyboard shortcuts, accessibility labels, and a SwiftUI review.

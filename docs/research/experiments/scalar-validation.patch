@@ -1,0 +1,97 @@
+--- a/Sources/TubelineCore/Mesh.swift
++++ b/Sources/TubelineCore/Mesh.swift
+@@ -49,11 +49,19 @@
+     internal func validation(checkAllFailures: Bool) -> MeshValidation {
+         var result = MeshValidation()
+         if normals.count != positions.count { result.invalidNormals += 1 }
+-        result.invalidNormals += normals.filter { !$0.x.isFinite || !$0.y.isFinite || !$0.z.isFinite || simd_length_squared($0) == 0 }.count
++        for normal in normals where !normal.x.isFinite || !normal.y.isFinite || !normal.z.isFinite || simd_length_squared(normal) == 0 {
++            result.invalidNormals += 1
++            if !checkAllFailures { return result }
++        }
++        if !checkAllFailures && !result.isValid { return result }
+         var ids: [SIMD3<Float>: Int] = [:]
+         var welded = [Int](repeating: -1, count: positions.count)
+         for (i, p) in positions.enumerated() {
+-            guard p.x.isFinite, p.y.isFinite, p.z.isFinite else { result.invalidVertices += 1; continue }
++            guard p.x.isFinite, p.y.isFinite, p.z.isFinite else {
++                result.invalidVertices += 1
++                if !checkAllFailures { return result }
++                continue
++            }
+             if let id = ids[p] { welded[i] = id } else { welded[i] = ids.count; ids[p] = ids.count }
+         }
+         struct EdgeUse { var count = 0; var winding = 0 }
+@@ -62,22 +70,37 @@
+         var links = [[SIMD2<Int>]](repeating: [], count: ids.count)
+         if indices.count % 3 != 0 { result.invalidIndices += 1 }
+         for t in stride(from: 0, to: indices.count - indices.count % 3, by: 3) {
+-            let raw = (0..<3).map { Int(indices[t + $0]) }
+-            guard raw.allSatisfy({ $0 < welded.count && welded[$0] >= 0 }) else {
+-                result.invalidIndices += 1; continue
++            let ia = Int(indices[t]), ib = Int(indices[t + 1]), ic = Int(indices[t + 2])
++            guard ia < welded.count, ib < welded.count, ic < welded.count,
++                  welded[ia] >= 0, welded[ib] >= 0, welded[ic] >= 0 else {
++                result.invalidIndices += 1
++                if !checkAllFailures { return result }
++                continue
+             }
+-            let v = raw.map { welded[$0] }
+-            let p = raw.map { Vec3(positions[$0]) }
+-            guard Set(v).count == 3, simd_length_squared(simd_cross(p[1] - p[0], p[2] - p[0])) > 0 else {
+-                result.degenerateTriangles += 1; continue
++            let v = SIMD3(welded[ia], welded[ib], welded[ic])
++            let p0 = Vec3(positions[ia]), p1 = Vec3(positions[ib]), p2 = Vec3(positions[ic])
++            guard v.x != v.y, v.y != v.z, v.x != v.z,
++                  simd_length_squared(simd_cross(p1 - p0, p2 - p0)) > 0 else {
++                result.degenerateTriangles += 1
++                if !checkAllFailures { return result }
++                continue
+             }
+-            let sorted = v.sorted()
+-            if !faces.insert(SIMD3(sorted[0], sorted[1], sorted[2])).inserted { result.duplicateTriangles += 1 }
++            let low = min(v.x, v.y, v.z), high = max(v.x, v.y, v.z)
++            if !faces.insert(SIMD3(low, v.x + v.y + v.z - low - high, high)).inserted {
++                result.duplicateTriangles += 1
++                if !checkAllFailures { return result }
++            }
+             for k in 0..<3 {
+                 let a = v[k], b = v[(k + 1) % 3]
+                 let key = SIMD2(min(a, b), max(a, b))
+-                edges[key, default: EdgeUse()].count += 1
+-                edges[key, default: EdgeUse()].winding += a < b ? 1 : -1
++                var use = edges[key, default: EdgeUse()]
++                use.count += 1
++                use.winding += a < b ? 1 : -1
++                edges[key] = use
++                if !checkAllFailures && use.count > 2 {
++                    result.nonManifoldEdges += 1
++                    return result
++                }
+                 links[a].append(SIMD2(b, v[(k + 2) % 3]))
+             }
+         }
+@@ -95,13 +118,21 @@
+                 adjacency[edge.x, default: []].append(edge.y)
+                 adjacency[edge.y, default: []].append(edge.x)
+             }
+-            guard adjacency.values.allSatisfy({ $0.count == 2 }) else { result.invalidVertexLinks += 1; continue }
++            guard adjacency.values.allSatisfy({ $0.count == 2 }) else {
++                result.invalidVertexLinks += 1
++                if !checkAllFailures { return result }
++                continue
++            }
+             var visited = Set<Int>(), pending = [link[0].x]
+             while let v = pending.popLast() {
+                 if visited.insert(v).inserted { pending.append(contentsOf: adjacency[v] ?? []) }
+             }
+-            if visited.count != adjacency.count { result.invalidVertexLinks += 1 }
++            if visited.count != adjacency.count {
++                result.invalidVertexLinks += 1
++                if !checkAllFailures { return result }
++            }
+         }
+         return result
+     }
+ }
++

@@ -13,6 +13,27 @@ final class MeshingTests: XCTestCase {
         XCTAssertTrue(validation.isValid, validation.summary, file: file, line: line)
     }
 
+    func testDefaultFillExtrudesLikeExplicitFillWithoutAnOutline() throws {
+        var options = ConversionOptions()
+        options.extrudeDepth = 2
+        options.extrudeRounding = 0
+        options.thickness = 3
+        func convert(_ paint: String) throws -> Mesh {
+            let svg = "<svg viewBox='0 0 12 12'><rect x='2' y='3' width='8' height='6' \(paint)/></svg>"
+            return try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: options)
+        }
+        let expected = try convert("fill='black' stroke='none'")
+        for paint in ["", "fill='black' stroke='red' stroke-width='0'"] {
+            let actual = try convert(paint)
+            assertWatertight(actual)
+            XCTAssertEqual(actual.positions, expected.positions)
+            XCTAssertEqual(actual.indices, expected.indices)
+            XCTAssertEqual(actual.bounds.size.x, 8 * 2.54 / 72, accuracy: 0.003)
+            XCTAssertEqual(actual.bounds.size.y, 6 * 2.54 / 72, accuracy: 0.003)
+            XCTAssertEqual(actual.bounds.size.z, 2 * 2.54 / 72, accuracy: 0.003)
+        }
+    }
+
     func testCrossingStrokesFuseIntoOneWatertightSolid() throws {
         let m = try mesh(##"<path d="M4 4 20 20"/><path d="M20 4 4 20"/>"##)
         XCTAssertGreaterThan(m.triangleCount, 100)
@@ -159,15 +180,78 @@ final class MeshingTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ConversionOptions.self, from: JSONEncoder().encode(options)), options)
     }
 
-    func testAmbiguousContourFallbackProducesAClosedManifold() {
+    private func crossingX(cm: Double) -> [PrimitiveGroup] {
+        [PrimitiveGroup(primitives: [.capsule(Vec3(-8,-8,0) * cm, Vec3(8,8,0) * cm, cm)]),
+         PrimitiveGroup(primitives: [.capsule(Vec3(8,-8,0) * cm, Vec3(-8,8,0) * cm, cm)])]
+    }
+
+    func testCrossingSheetsContourToAManifoldWithoutFallback() {
+        // Before per-sheet contouring, this X pinched at its crease and needed the dense fallback.
         let cm = 2.54 / 72
-        let groups = [
-            PrimitiveGroup(primitives: [.capsule(Vec3(-8,-8,0) * cm, Vec3(8,8,0) * cm, cm)]),
-            PrimitiveGroup(primitives: [.capsule(Vec3(8,-8,0) * cm, Vec3(-8,8,0) * cm, cm)]),
-        ]
-        let m = FusedMesher(groups: groups, voxel: 2 * .pi * cm / (32 * 1.4), blend: 0).build()
+        let m = FusedMesher(groups: crossingX(cm: cm), voxel: 2 * .pi * cm / (32 * 1.4), blend: 0,
+                            tolerance: cm * (1 - cos(.pi / 32))).build()
+        assertWatertight(m)
+        XCTAssertFalse(m.warnings.contains { $0.contains("denser mesh") })
+    }
+
+    func testTetrahedralFallbackProducesAClosedManifold() {
+        let cm = 2.54 / 72
+        var mesher = FusedMesher(groups: crossingX(cm: cm), voxel: 2 * .pi * cm / (32 * 1.4), blend: 0)
+        mesher.forceTetrahedralFallback = true
+        let m = mesher.build()
         assertWatertight(m)
         XCTAssertTrue(m.warnings.contains { $0.contains("denser mesh") })
+    }
+
+    func testCellWithOneCornerInsideHasOneSheet() {
+        var v = [Float](repeating: 1, count: 8)
+        v[0] = -1
+        let (packed, count) = FusedMesher.sheets(values: v)
+        XCTAssertEqual(count, 1)
+        // Edges 0, 4, and 8 touch corner 0; all belong to sheet 0.
+        for e in [0, 4, 8] { XCTAssertEqual((packed >> (4 * UInt64(e))) & 0xF, 0) }
+    }
+
+    func testOppositeCubeCornersFormTwoSheets() {
+        var v = [Float](repeating: 1, count: 8)
+        v[0] = -1
+        v[7] = -1
+        XCTAssertEqual(FusedMesher.sheets(values: v).count, 2)
+    }
+
+    func testAmbiguousFaceFollowsItsSaddle() {
+        // Corners 0 and 3 are inside, diagonally across the z = 0 face.
+        var weak = [Float](repeating: 1, count: 8)
+        weak[0] = -0.2; weak[3] = -0.2
+        weak[1] = 1; weak[2] = 1
+        // The saddle is outside, so each inside corner is cut off: two sheets.
+        XCTAssertEqual(FusedMesher.sheets(values: weak).count, 2)
+
+        var strong = [Float](repeating: 1, count: 8)
+        strong[0] = -1; strong[3] = -1
+        strong[1] = 0.1; strong[2] = 0.1
+        // The saddle is inside, so the inside corners connect across the face: one sheet.
+        XCTAssertEqual(FusedMesher.sheets(values: strong).count, 1)
+    }
+
+    func testFastValidationStillRejectsPinchedVerticesWithClosedEdges() {
+        // Two tetrahedra touch only at the origin. Every edge has two incident faces,
+        // but the shared vertex has two separate surface neighborhoods.
+        let pinched = Mesh(positions: [[0,0,0], [1,0,0], [0,1,0], [0,0,1], [-1,0,0], [0,-1,0], [0,0,-1]],
+                           normals: Array(repeating: [0,0,1], count: 7),
+                           indices: [0,2,1, 0,1,3, 0,3,2, 1,2,3, 0,4,5, 0,6,4, 0,5,6, 4,6,5])
+        let full = pinched.validation()
+        XCTAssertEqual(full.boundaryEdges, 0)
+        XCTAssertEqual(full.nonManifoldEdges, 0)
+        XCTAssertEqual(full.inconsistentEdges, 0)
+        XCTAssertEqual(full.invalidVertexLinks, 1)
+        XCTAssertFalse(pinched.validation(checkAllFailures: false).isValid)
+
+        let tetrahedron = Mesh(positions: Array(pinched.positions.prefix(4)),
+                               normals: Array(pinched.normals.prefix(4)),
+                               indices: Array(pinched.indices.prefix(12)))
+        XCTAssertTrue(tetrahedron.validation().isValid)
+        XCTAssertTrue(tetrahedron.validation(checkAllFailures: false).isValid)
     }
 
 }

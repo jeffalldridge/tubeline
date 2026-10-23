@@ -85,6 +85,13 @@ grep -q "com.apple.security.app-sandbox" <<<"$entitlements" || { echo "error: sa
   || { echo "error: app version does not match $VERSION" >&2; exit 1; }
 ! /usr/libexec/PlistBuddy -c 'Print CFBundleIconFile' "$APP/Contents/Info.plist" >/dev/null 2>&1 \
   || { echo "error: stale CFBundleIconFile (validator error 90236)" >&2; exit 1; }
+[[ "$(/usr/libexec/PlistBuddy -c 'Print ITSAppUsesNonExemptEncryption' "$APP/Contents/Info.plist")" == "false" ]] \
+  || { echo "error: missing or incorrect encryption declaration" >&2; exit 1; }
+[[ "$(/usr/libexec/PlistBuddy -c 'Print NSHumanReadableCopyright' "$APP/Contents/Info.plist")" == *"Tent Studios"* ]] \
+  || { echo "error: missing Tent Studios copyright" >&2; exit 1; }
+[[ "$(/usr/libexec/PlistBuddy -c 'Print LSApplicationCategoryType' "$APP/Contents/Info.plist")" == "public.app-category.graphics-design" ]] \
+  || { echo "error: incorrect app category" >&2; exit 1; }
+plutil -lint "$APP/Contents/Resources/PrivacyInfo.xcprivacy" >/dev/null
 
 # ---------------------------------------------------------------------------
 # 4. Notarize + staple the app

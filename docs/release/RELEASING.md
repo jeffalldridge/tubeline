@@ -23,6 +23,7 @@ Before notarizing, the script confirms that the tests pass and that the exported
 - Keeps its sandbox entitlement and has no `get-task-allow` entitlement
 - Is built for Apple silicon only and matches the version number
 - Has no leftover `CFBundleIconFile` key, which causes App Store validation error 90236
+- Includes the copyright, graphics-design category, explicit encryption declaration, and a parseable privacy manifest
 
 After notarization, it staples the app and the DMG and confirms that Gatekeeper accepts both. It also runs the signed command-line tool once before notarizing it.
 

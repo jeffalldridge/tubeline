@@ -85,4 +85,19 @@ final class PreviewCameraTests: XCTestCase {
         XCTAssertEqual(owned.presentation.simdWorldFront.y, 0, accuracy: 0.0001)
         XCTAssertEqual(owned.presentation.simdWorldFront.z, -1, accuracy: 0.0001)
     }
+
+    func testMenuOrbitCommandsCanInspectTheModelAndReturnToFront() {
+        let (view, owned, _) = preview()
+        for mode in [PreviewCameraRequest.Mode.orbitLeft, .orbitRight, .orbitUp, .orbitDown] {
+            view.applyCameraRequest(.front)
+            let front = owned.simdWorldOrientation
+            view.applyCameraRequest(mode)
+            guard let displayed = view.pointOfView else { return XCTFail("Missing displayed camera") }
+            XCTAssertLessThan(abs(simd_dot(front.vector, displayed.simdWorldOrientation.vector)), 0.999)
+            view.applyCameraRequest(.front)
+            XCTAssertEqual(owned.position.x, 0, accuracy: 0.0001)
+            XCTAssertEqual(owned.position.y, 0, accuracy: 0.0001)
+            XCTAssertEqual(owned.simdWorldFront.z, -1, accuracy: 0.0001)
+        }
+    }
 }

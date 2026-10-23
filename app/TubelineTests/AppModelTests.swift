@@ -8,6 +8,14 @@ final class AppModelTests: XCTestCase {
         let name = "TubelineTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
+        // Each test gets its own preferences; delete them afterward so runs don't pile up files.
+        // Clearing the domain leaves an empty plist behind, so remove the file too.
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: name)
+            CFPreferencesAppSynchronize(name as CFString)
+            let file = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Preferences/\(name).plist")
+            try? FileManager.default.removeItem(at: file)
+        }
         return defaults
     }
 
@@ -20,6 +28,27 @@ final class AppModelTests: XCTestCase {
     private func report() -> ConversionReport {
         ConversionReport(strokes: 1, fills: 0, vertices: 3, triangles: 1,
                          dimensions: SIMD3(1, 1, 1), skipped: [], seconds: 0)
+    }
+
+    func testStartupPreferencesPersistWithoutChangingCurrentBatch() {
+        let defaults = makeDefaults()
+        let model = AppModel(defaults: defaults, authorizeFolders: { _ in [] })
+        let current = model.options
+        model.startupOptions.facets = 16
+        model.startupOptions.optimize = false
+        model.startupOptions.outputScale = 10
+        XCTAssertEqual(model.options, current)
+        let reopened = AppModel(defaults: defaults, authorizeFolders: { _ in [] })
+        XCTAssertEqual(reopened.options.facets, 16)
+        XCTAssertFalse(reopened.options.optimize)
+        XCTAssertEqual(reopened.options.outputScale, 10)
+        model.restoreDefaults()
+        XCTAssertEqual(model.options, reopened.options)
+        model.resetSavedDefaults()
+        XCTAssertEqual(model.startupOptions, ConversionOptions())
+        XCTAssertEqual(model.options.facets, 16)
+        model.clear()
+        reopened.clear()
     }
 
     func testSelectedOverridesKeepUntouchedFieldsInherited() {
@@ -65,7 +94,7 @@ final class AppModelTests: XCTestCase {
         let job = Job(source: URL(fileURLWithPath: "/tmp/example.svg"))
         model.jobs = [job]
         model.destination = .folder
-        XCTAssertNil(model.outputURL(for: job))
+        XCTAssertNil(model.outputStem(for: job))
         model.exportAll()
         XCTAssertFalse(model.isExporting)
         XCTAssertNotNil(model.exportError)
@@ -78,7 +107,8 @@ final class AppModelTests: XCTestCase {
         let started = expectation(description: "Conversion started")
         let gate = DispatchSemaphore(value: 0)
         let result = report()
-        let worker = ConversionQueue { _, output, options in
+        let worker = ConversionQueue { _, outputs, options in
+            let output = outputs[0]
             started.fulfill()
             guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
             try Data(String(options.thickness).utf8).write(to: output)
@@ -100,6 +130,37 @@ final class AppModelTests: XCTestCase {
         guard case .exported = job.status else { return XCTFail("Returning to the exported settings should restore freshness") }
     }
 
+    func testBothFormatsExportTogetherUnderOneUniqueName() async throws {
+        let dir = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let result = report()
+        let worker = ConversionQueue { _, outputs, _ in
+            for output in outputs { try Data(output.pathExtension.utf8).write(to: output) }
+            return result
+        }
+        let defaults = makeDefaults()
+        let model = AppModel(defaults: defaults, worker: worker, authorizeFolders: { _ in [] })
+        model.exportFormat = .both
+        let source = dir.appendingPathComponent("icon.svg")
+        try Data("svg".utf8).write(to: source)
+        // Only the GLB name is taken; both files must still move to the next free name together.
+        try Data("existing".utf8).write(to: dir.appendingPathComponent("icon.glb"))
+        let job = Job(source: source)
+        model.jobs = [job]
+        model.exportAll()
+        try await waitForExport(model)
+        XCTAssertEqual(job.lastExportURLs.map(\.lastPathComponent), ["icon 2.usdz", "icon 2.glb"])
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("icon 2.glb"), encoding: .utf8), "glb")
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("icon.glb"), encoding: .utf8), "existing")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("icon.usdz").path))
+        guard case .exported = job.status else { return XCTFail("The export should be current") }
+
+        // The format is remembered, and changing it marks the export as out of date.
+        XCTAssertEqual(AppModel(defaults: defaults, worker: worker).exportFormat, .both)
+        model.exportFormat = .glb
+        guard case .outdated = job.status else { return XCTFail("A different format needs a new export") }
+    }
+
     func testCancelDoesNotPublishRunningConversionOrStartQueuedJobs() async throws {
         let dir = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -107,7 +168,8 @@ final class AppModelTests: XCTestCase {
         let finished = expectation(description: "Worker finished")
         let gate = DispatchSemaphore(value: 0)
         let result = report()
-        let worker = ConversionQueue { _, output, _ in
+        let worker = ConversionQueue { _, outputs, _ in
+            let output = outputs[0]
             started.fulfill()
             guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
             try Data("temporary".utf8).write(to: output)
@@ -163,7 +225,8 @@ final class AppModelTests: XCTestCase {
 
     func testFailedNewPreviewCannotDisplayPreviousIcon() async throws {
         let result = report()
-        let worker = ConversionQueue { source, output, _ in
+        let worker = ConversionQueue { source, outputs, _ in
+            let output = outputs[0]
             if source.lastPathComponent == "broken.svg" { throw CocoaError(.fileReadCorruptFile) }
             try Data("preview".utf8).write(to: output)
             return result
@@ -182,6 +245,246 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.previewURL)
         XCTAssertNotNil(model.previewError)
         model.clear()
+    }
+
+    func testRemovingSettledRowDoesNotCancelRemainingExports() async throws {
+        for firstFails in [false, true] {
+            let dir = try makeDirectory()
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let secondStarted = expectation(description: "Second conversion started")
+            let gate = DispatchSemaphore(value: 0)
+            let result = report()
+            let worker = ConversionQueue { source, outputs, _ in
+            let output = outputs[0]
+                if source.lastPathComponent == "second.svg" {
+                    secondStarted.fulfill()
+                    guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
+                } else if firstFails { throw CocoaError(.fileReadCorruptFile) }
+                try Data("export".utf8).write(to: output)
+                return result
+            }
+            let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+            let first = Job(source: dir.appendingPathComponent("first.svg"))
+            let second = Job(source: dir.appendingPathComponent("second.svg"))
+            model.jobs = [first, second]
+            model.exportAll()
+            await fulfillment(of: [secondStarted], timeout: 2)
+            if firstFails {
+                guard case .failed = first.status else { return XCTFail("First job should have failed") }
+            } else {
+                guard case .exported = first.status else { return XCTFail("First job should have completed") }
+            }
+            model.remove(first)
+            XCTAssertTrue(model.isExporting)
+            XCTAssertEqual(second.status, .working)
+            gate.signal()
+            try await waitForExport(model)
+            guard case .exported = second.status else { return XCTFail("Removing a settled row must preserve the remaining export") }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("second.usdz").path))
+        }
+    }
+
+    func testAutomaticExportQueuesNewAndReaddedInputsWithLatestSettings() async throws {
+        let dir = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let firstSource = dir.appendingPathComponent("first.svg")
+        let secondSource = dir.appendingPathComponent("second.svg")
+        try Data("first".utf8).write(to: firstSource)
+        try Data("second".utf8).write(to: secondSource)
+        let started = expectation(description: "Initial export started")
+        let gate = DispatchSemaphore(value: 0)
+        let result = report()
+        let worker = ConversionQueue { source, outputs, options in
+            let output = outputs[0]
+            if output.deletingLastPathComponent().lastPathComponent.hasPrefix(".Tubeline-"),
+               output.lastPathComponent == "first.usdz" {
+                started.fulfill()
+                guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
+            }
+            try Data("\(source.lastPathComponent):\(options.thickness)".utf8).write(to: output)
+            return result
+        }
+        let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+        let first = Job(source: firstSource)
+        model.jobs = [first]
+        model.exportOnDrop = true
+        model.exportAll()
+        await fulfillment(of: [started], timeout: 2)
+        model.add([firstSource, secondSource])
+        model.add([firstSource])
+        model.select(nil)
+        model.options.thickness = 2
+        gate.signal()
+        try await waitForExport(model)
+        XCTAssertEqual(model.jobs.count, 2)
+        XCTAssertEqual(first.revision, 2)
+        XCTAssertEqual(first.lastExportRevision, 2)
+        XCTAssertTrue(model.jobs.allSatisfy { if case .exported = $0.status { return true }; return false })
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("first.usdz"), encoding: .utf8), "first.svg:1.0")
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("first 2.usdz"), encoding: .utf8), "first.svg:2.0")
+        XCTAssertEqual(try String(contentsOf: dir.appendingPathComponent("second.usdz"), encoding: .utf8), "second.svg:2.0")
+        let outputs = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil).filter { $0.pathExtension == "usdz" }
+        XCTAssertEqual(outputs.count, 3, "Repeated adds during work should coalesce into one follow-up export per job")
+        model.clear()
+    }
+
+    func testCancelAndWorkingRemovalDiscardQueuedAutomaticExports() async throws {
+        for removeWorkingRow in [false, true] {
+            let dir = try makeDirectory()
+            defer { try? FileManager.default.removeItem(at: dir) }
+            let started = expectation(description: "Conversion started")
+            let finished = expectation(description: "Canceled worker finished")
+            let gate = DispatchSemaphore(value: 0)
+            let result = report()
+            let worker = ConversionQueue { _, outputs, _ in
+            let output = outputs[0]
+                started.fulfill()
+                guard gate.wait(timeout: .now() + 3) == .success else { throw CocoaError(.userCancelled) }
+                try Data("temporary".utf8).write(to: output)
+                finished.fulfill()
+                return result
+            }
+            let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+            let active = Job(source: dir.appendingPathComponent("active.svg"))
+            model.jobs = [active]
+            model.exportOnDrop = true
+            model.exportAll()
+            await fulfillment(of: [started], timeout: 2)
+            let queuedSource = dir.appendingPathComponent("queued.svg")
+            try Data("queued".utf8).write(to: queuedSource)
+            model.add([queuedSource])
+            model.select(nil)
+            if removeWorkingRow { model.remove(active) } else { model.cancelExports() }
+            XCTAssertFalse(model.isExporting)
+            XCTAssertEqual(model.jobs.count, removeWorkingRow ? 1 : 2)
+            XCTAssertEqual(model.jobs.last?.status, .pending)
+            if !removeWorkingRow { XCTAssertEqual(active.status, .cancelled) }
+            gate.signal()
+            await fulfillment(of: [finished], timeout: 2)
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertFalse(model.isExporting)
+            let remaining = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            XCTAssertEqual(remaining, ["queued.svg"], "Cancellation must not restart queued automatic exports")
+            model.clear()
+        }
+    }
+
+    func testFailedAutomaticExportIsNotRetriedWithoutANewRequest() async throws {
+        let dir = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let source = dir.appendingPathComponent("broken.svg")
+        try Data("broken".utf8).write(to: source)
+        let attempted = expectation(description: "Automatic export attempted once")
+        attempted.assertForOverFulfill = true
+        let worker = ConversionQueue { _, outputs, _ in
+            let output = outputs[0]
+            if output.deletingLastPathComponent().lastPathComponent.hasPrefix(".Tubeline-") { attempted.fulfill() }
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let model = AppModel(defaults: makeDefaults(), worker: worker, authorizeFolders: { _ in [] })
+        model.exportOnDrop = true
+        model.add([source])
+        model.select(nil)
+        await fulfillment(of: [attempted], timeout: 2)
+        try await waitForExport(model)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(model.isExporting)
+        guard case .failed = model.jobs.first?.status else { return XCTFail("Failure should remain available for an explicit retry") }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["broken.svg"])
+        model.clear()
+    }
+
+    func testNumericRulesParseLocaleAndRejectInvalidInput() throws {
+        let english = Locale(identifier: "en_US")
+        let german = Locale(identifier: "de_DE")
+        XCTAssertEqual(NumericInputRule.positive.parse("1.25", locale: english), 1.25)
+        XCTAssertEqual(NumericInputRule.positive.parse("1,25", locale: german), 1.25)
+        XCTAssertEqual(NumericInputRule.outputScale.parse("10.000", locale: german), 10_000)
+        XCTAssertEqual(NumericInputRule.outputScale.parse("1", locale: english), 1)
+        for text in ["", "-1", "0", "NaN", "Infinity", "2cats", "2 3", "12,34", "1.2.3", "1e999"] {
+            XCTAssertNil(NumericInputRule.positive.parse(text, locale: english), text)
+        }
+        for text in ["0", "-1", "10001", "1.5", "2cats"] {
+            XCTAssertNil(NumericInputRule.outputScale.parse(text, locale: english), text)
+        }
+    }
+
+    func testNumericDraftPreservesUnchangedCalibrationPrecision() {
+        let locale = Locale(identifier: "en_US")
+        let calibration = 25.4 / 72
+        var draft = NumericInputDraft()
+        draft.synchronize(value: calibration, locale: locale, fractionDigits: 4)
+        XCTAssertEqual(draft.text, "0.3528")
+        var boundValue = calibration
+        if let committed = draft.commit(rule: .positive, locale: locale) { boundValue = committed }
+        XCTAssertEqual(boundValue, calibration, "Focus and blur without edits must not write rounded display text")
+        XCTAssertNil(draft.error)
+    }
+
+    func testNumericDraftKeepsLastValidValueUntilCorrected() {
+        let locale = Locale(identifier: "de_DE")
+        var draft = NumericInputDraft()
+        draft.synchronize(value: 4, locale: locale, fractionDigits: 2)
+        var boundValue = 4.0
+        draft.edit("0")
+        if let committed = draft.commit(rule: .positive, locale: locale) { boundValue = committed }
+        XCTAssertEqual(boundValue, 4)
+        XCTAssertNotNil(draft.error)
+        draft.edit("1,25")
+        if let committed = draft.commit(rule: .positive, locale: locale) { boundValue = committed }
+        XCTAssertEqual(boundValue, 1.25)
+        XCTAssertNil(draft.error)
+    }
+
+    func testTinyPositiveNumericValuesAreNotDisplayedAsZero() {
+        var draft = NumericInputDraft()
+        let locale = Locale(identifier: "en_US")
+        draft.synchronize(value: 0.000001, locale: locale, fractionDigits: 4)
+        XCTAssertNotEqual(draft.text, "0")
+        XCTAssertEqual(NumericInputRule.positive.parse(draft.text, locale: locale), 0.000001)
+    }
+
+    func testInvalidStartupChangesDoNotReplaceValidPreferences() throws {
+        let defaults = makeDefaults()
+        let model = AppModel(defaults: defaults)
+        model.startupOptions.outputScale = 10
+        let original = try XCTUnwrap(defaults.data(forKey: "defaultOptions"))
+        for scale in [0, 10_001] {
+            model.startupOptions.outputScale = scale
+            XCTAssertEqual(model.startupOptions.outputScale, 10)
+            XCTAssertEqual(defaults.data(forKey: "defaultOptions"), original)
+            XCTAssertNotNil(model.startupOptionsError)
+        }
+        var invalid = model.startupOptions
+        invalid.millimetersPerPoint = .nan
+        model.startupOptions = invalid
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), original)
+        XCTAssertEqual(model.startupOptions.millimetersPerPoint, ConversionOptions().millimetersPerPoint)
+        model.options.extrudeDepth = 0
+        model.saveCurrentAsDefaults()
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), original)
+        XCTAssertNotNil(model.startupOptionsError)
+        XCTAssertEqual(AppModel(defaults: defaults).options.outputScale, 10)
+    }
+
+    func testInvalidStoredDefaultsUseValidFallbackWithoutOverwritingPreferences() throws {
+        let defaults = makeDefaults()
+        var invalid = ConversionOptions()
+        invalid.outputScale = 0
+        let invalidData = try JSONEncoder().encode(invalid)
+        defaults.set(invalidData, forKey: "defaultOptions")
+        let builtinFallback = AppModel(defaults: defaults)
+        XCTAssertEqual(builtinFallback.startupOptions, ConversionOptions())
+        XCTAssertNotNil(builtinFallback.startupOptionsError)
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), invalidData)
+        var legacy = ConversionOptions()
+        legacy.outputScale = 100
+        let legacyData = try JSONEncoder().encode(legacy)
+        defaults.set(legacyData, forKey: "options")
+        let legacyFallback = AppModel(defaults: defaults)
+        XCTAssertEqual(legacyFallback.options.outputScale, 100)
+        XCTAssertEqual(defaults.data(forKey: "options"), legacyData)
+        XCTAssertEqual(defaults.data(forKey: "defaultOptions"), invalidData)
     }
 
     private func waitForPreview(_ model: AppModel) async throws {

@@ -128,6 +128,7 @@ final class USDZExportTests: XCTestCase {
         XCTAssertEqual(mesh.bounds.max.y, 9 * pointsToCentimeters, accuracy: 0.002)
         XCTAssertEqual(mesh.bounds.min.z, -pointsToCentimeters, accuracy: 0.002)
         XCTAssertEqual(mesh.bounds.max.z, pointsToCentimeters, accuracy: 0.002)
+        assertLowerRightArm(mesh.positions)
         let usd = try USDZWriter.makeUSDA(mesh: mesh, name: "asymmetric", color: SIMD3(repeating: 1), surface: .solid)
         XCTAssertTrue(usd.contains("upAxis = \"Y\""))
         XCTAssertFalse(usd.contains("xformOp"))
@@ -145,8 +146,41 @@ final class USDZExportTests: XCTestCase {
             XCTAssertLessThan(simd_distance(x, SIMD3<Float>(1, 0, 0)), 0.0001)
             XCTAssertLessThan(simd_distance(y, SIMD3<Float>(0, 1, 0)), 0.0001)
             XCTAssertLessThan(simd_distance(z, SIMD3<Float>(0, 0, 1)), 0.0001)
+            guard let source = node.geometry?.sources(for: .vertex).first,
+                  source.usesFloatComponents,
+                  source.bytesPerComponent == MemoryLayout<Float>.size,
+                  source.componentsPerVector >= 3 else {
+                return XCTFail("Expected float3 vertex positions in the exported mesh")
+            }
+            let loadedPositions: [SIMD3<Float>] = source.data.withUnsafeBytes { bytes in
+                (0..<source.vectorCount).map { index in
+                    let offset = source.dataOffset + index * source.dataStride
+                    let position = SIMD3<Float>(
+                        bytes.loadUnaligned(fromByteOffset: offset, as: Float.self),
+                        bytes.loadUnaligned(fromByteOffset: offset + 4, as: Float.self),
+                        bytes.loadUnaligned(fromByteOffset: offset + 8, as: Float.self))
+                    return node.simdConvertPosition(position, to: nil)
+                }
+            }
+            self.assertLowerRightArm(loadedPositions)
         }
         XCTAssertEqual(geometryCount, 1)
+    }
+
+    private func assertLowerRightArm(_ positions: [SIMD3<Float>],
+                                    file: StaticString = #filePath, line: UInt = #line) {
+        guard let minX = positions.map(\.x).min(), let maxX = positions.map(\.x).max(),
+              let minY = positions.map(\.y).min(), let maxY = positions.map(\.y).max() else {
+            return XCTFail("The L has no vertices", file: file, line: line)
+        }
+        // Symmetric Y bounds cannot distinguish this L from its vertical reflection.
+        let rightSide = minX + (maxX - minX) * 0.6
+        let centerY = (minY + maxY) / 2
+        let quarterHeight = (maxY - minY) / 4
+        XCTAssertTrue(positions.contains { $0.x > rightSide && $0.y < centerY - quarterHeight },
+                      "The L must have a lower-right arm", file: file, line: line)
+        XCTAssertFalse(positions.contains { $0.x > rightSide && $0.y > centerY + quarterHeight },
+                       "The L must not have an upper-right arm", file: file, line: line)
     }
 
     func testFrontPreviewUsesOrthographicProjectionAndNoRotation() {
@@ -164,5 +198,67 @@ final class USDZExportTests: XCTestCase {
         XCTAssertEqual(camera.eulerAngles.z, 0, accuracy: 0.0001)
         PreviewScene.fitCamera(in: scene, viewportSize: CGSize(width: 400, height: 600), tilt: 0.35)
         XCTAssertFalse(camera.camera?.usesOrthographicProjection == true)
+    }
+}
+
+final class GLBExportTests: XCTestCase {
+    private func glb(surface: ConversionOptions.Surface) throws -> (json: [String: Any], bin: Data, mesh: Mesh) {
+        let svg = ##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>"##
+        let mesh = try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: ConversionOptions())
+        let data = GLBWriter.make(mesh: mesh, name: "plus", color: SIMD3(1, 0.5, 0), surface: surface)
+        func u32(_ at: Int) -> UInt32 { data.subdata(in: at..<at + 4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) } }
+        XCTAssertEqual(u32(0), 0x4654_6C67, "glTF magic")
+        XCTAssertEqual(u32(4), 2, "glTF version")
+        XCTAssertEqual(Int(u32(8)), data.count, "header length")
+        let jsonLength = Int(u32(12))
+        XCTAssertEqual(u32(16), 0x4E4F_534A, "JSON chunk")
+        XCTAssertEqual(jsonLength % 4, 0)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data.subdata(in: 20..<20 + jsonLength)) as? [String: Any])
+        let binStart = 20 + jsonLength
+        XCTAssertEqual(u32(binStart + 4), 0x004E_4942, "BIN chunk")
+        let bin = data.subdata(in: binStart + 8..<binStart + 8 + Int(u32(binStart)))
+        return (json, bin, mesh)
+    }
+
+    func testGLBLayoutUsesMetersAndMatchesTheMesh() throws {
+        let (json, bin, mesh) = try glb(surface: .solid)
+        let accessors = try XCTUnwrap(json["accessors"] as? [[String: Any]])
+        XCTAssertEqual(accessors[0]["count"] as? Int, mesh.positions.count)
+        XCTAssertEqual(accessors[2]["count"] as? Int, mesh.indices.count)
+        let max = try XCTUnwrap(accessors[0]["max"] as? [Double])
+        // Centimeters in the mesh become meters in glTF.
+        XCTAssertEqual(max[0], Double(mesh.bounds.max.x) / 100, accuracy: 1e-6)
+        let first = bin.subdata(in: 0..<12).withUnsafeBytes { SIMD3<Float>($0.loadUnaligned(as: Float.self),
+            $0.loadUnaligned(fromByteOffset: 4, as: Float.self), $0.loadUnaligned(fromByteOffset: 8, as: Float.self)) }
+        XCTAssertEqual(first, mesh.positions[0] / 100)
+    }
+
+    func testSolidColorIsUnlitAndShadedIsMatte() throws {
+        let solid = try glb(surface: .solid).json
+        XCTAssertEqual(solid["extensionsUsed"] as? [String], ["KHR_materials_unlit"])
+        let solidMaterial = try XCTUnwrap((solid["materials"] as? [[String: Any]])?.first)
+        XCTAssertNotNil((solidMaterial["extensions"] as? [String: Any])?["KHR_materials_unlit"])
+        let factor = try XCTUnwrap((solidMaterial["pbrMetallicRoughness"] as? [String: Any])?["baseColorFactor"] as? [Double])
+        // sRGB 0.5 is about 0.214 in linear light, which glTF expects.
+        XCTAssertEqual(factor[1], 0.214, accuracy: 0.001)
+
+        let shaded = try glb(surface: .shaded).json
+        XCTAssertNil(shaded["extensionsUsed"])
+        let pbr = try XCTUnwrap(((shaded["materials"] as? [[String: Any]])?.first?["pbrMetallicRoughness"]) as? [String: Any])
+        XCTAssertEqual(pbr["roughnessFactor"] as? Double, 0.5)
+        XCTAssertEqual(pbr["metallicFactor"] as? Double, 0)
+    }
+
+    func testConvertWritesEveryRequestedFormatFromOneMesh() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let svg = dir.appendingPathComponent("icon.svg")
+        try Data(##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="#000" stroke-width="2" fill="none"><path d="M4 12h16"/></svg>"##.utf8).write(to: svg)
+        let outputs = [dir.appendingPathComponent("icon.usdz"), dir.appendingPathComponent("icon.glb")]
+        try Converter.convert(svg: svg, to: outputs, options: ConversionOptions())
+        let usdz = try Data(contentsOf: outputs[0]), glb = try Data(contentsOf: outputs[1])
+        XCTAssertEqual(usdz.prefix(4), Data([0x50, 0x4B, 0x03, 0x04]), "USDZ is a zip package")
+        XCTAssertEqual(glb.prefix(4), Data("glTF".utf8))
     }
 }

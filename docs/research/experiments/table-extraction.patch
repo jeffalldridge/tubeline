@@ -1,0 +1,115 @@
+--- a/Sources/TubelineCore/FusedMesher.swift
++++ b/Sources/TubelineCore/FusedMesher.swift
+@@ -209,18 +209,31 @@
+         // Keep crossings away from exactly zero-valued lattice vertices. The displacement
+         // is much smaller than one facet's sag, and avoids coincident Float vertices.
+         let iso = voxel * voxel * 0.01
++        struct Cell {
++            var grid = SIMD8<Int>.zero
++            var values = SIMD8<Double>.zero
++            var x = SIMD8<Double>.zero, y = SIMD8<Double>.zero, z = SIMD8<Double>.zero
++            func position(_ corner: Int) -> Vec3 { Vec3(x[corner], y[corner], z[corner]) }
++        }
++        struct Pattern { var insideCount: Int; var edges: [SIMD2<Int>] }
++        let patterns = (0..<16).map { mask -> Pattern in
++            let inside = (0..<4).filter { mask & (1 << $0) != 0 }
++            let outside = (0..<4).filter { mask & (1 << $0) == 0 }
++            let edges: [SIMD2<Int>]
++            if inside.count == 1 { edges = outside.map { SIMD2(inside[0], $0) } }
++            else if outside.count == 1 { edges = inside.map { SIMD2(outside[0], $0) } }
++            else if inside.count == 2 { edges = [SIMD2(inside[0], outside[0]), SIMD2(inside[0], outside[1]), SIMD2(inside[1], outside[1]), SIMD2(inside[1], outside[0])] }
++            else { edges = [] }
++            return Pattern(insideCount: inside.count, edges: edges)
++        }
+         var mesh = Mesh()
+         var vertexForEdge: [SIMD2<Int>: UInt32] = [:]
+-        func vertex(_ a: Int, _ b: Int, _ positions: [Vec3], _ grid: [Int], _ values: [Double]) -> UInt32 {
+-            let key = SIMD2(min(grid[a], grid[b]), max(grid[a], grid[b]))
++        func vertex(_ a: Int, _ b: Int, _ cell: Cell) -> UInt32 {
++            let key = SIMD2(min(cell.grid[a], cell.grid[b]), max(cell.grid[a], cell.grid[b]))
+             if let found = vertexForEdge[key] { return found }
+-            // Preserve the piecewise-linear field's topology. Snapping these crossings
+-            // independently to the exact SDF can collapse distinct tetrahedral edges at
+-            // a crease, reintroducing the degeneracies this fallback must avoid.
+-            // Keep a small separation from shared lattice corners. Otherwise an almost
+-            // zero sample creates sliver triangles that collapse after Float export.
+-            let t = simd_clamp(values[a] / (values[a] - values[b]), 0.001, 0.999)
+-            let p = positions[a] + (positions[b] - positions[a]) * t
++            let t = simd_clamp(cell.values[a] / (cell.values[a] - cell.values[b]), 0.001, 0.999)
++            let pa = cell.position(a), pb = cell.position(b)
++            let p = pa + (pb - pa) * t
+             let id = UInt32(mesh.positions.count)
+             vertexForEdge[key] = id
+             mesh.positions.append(SIMD3<Float>(p))
+@@ -233,37 +246,50 @@
+                 mesh.indices += [a, c, b]
+             } else { mesh.indices += [a, b, c] }
+         }
++        var cell = Cell()
+         for k in 0..<(nz - 1) {
+             for j in 0..<(ny - 1) {
+                 for i in 0..<(nx - 1) {
+                     let base = i + nx * (j + ny * k)
+                     if abs(Double(field[base]) - iso) > 1.8 * voxel { continue }
+-                    let grid = corners.map { (i + $0.x) + nx * ((j + $0.y) + ny * (k + $0.z)) }
+-                    let values = grid.map { Double(field[$0]) - iso }
+-                    if values.allSatisfy({ $0 < 0 }) || values.allSatisfy({ $0 >= 0 }) { continue }
+-                    let positions = corners.map { origin + Vec3(Double(i + $0.x), Double(j + $0.y), Double(k + $0.z)) * voxel }
++                    var cubeMask = 0
++                    for c in 0..<8 {
++                        let offset = corners[c]
++                        let index = (i + offset.x) + nx * ((j + offset.y) + ny * (k + offset.z))
++                        cell.grid[c] = index
++                        cell.values[c] = Double(field[index]) - iso
++                        if cell.values[c] < 0 { cubeMask |= 1 << c }
++                    }
++                    if cubeMask == 0 || cubeMask == 255 { continue }
++                    for c in 0..<8 {
++                        let offset = corners[c]
++                        let p = origin + Vec3(Double(i + offset.x), Double(j + offset.y), Double(k + offset.z)) * voxel
++                        cell.x[c] = p.x; cell.y[c] = p.y; cell.z[c] = p.z
++                    }
+                     for tet in tetrahedra {
+-                        let inside = tet.filter { values[$0] < 0 }, outside = tet.filter { values[$0] >= 0 }
+-                        if inside.isEmpty || outside.isEmpty { continue }
+-                        let inward = inside.reduce(Vec3.zero) { $0 + positions[$1] } / Double(inside.count)
+-                        let outward = outside.reduce(Vec3.zero) { $0 + positions[$1] } / Double(outside.count) - inward
+-                        if inside.count == 1 {
+-                            let v = outside.map { vertex(inside[0], $0, positions, grid, values) }
+-                            triangle(v[0], v[1], v[2], outward: outward)
+-                        } else if outside.count == 1 {
+-                            let v = inside.map { vertex(outside[0], $0, positions, grid, values) }
+-                            triangle(v[0], v[1], v[2], outward: outward)
++                        var mask = 0
++                        for c in 0..<4 where cell.values[tet[c]] < 0 { mask |= 1 << c }
++                        if mask == 0 || mask == 15 { continue }
++                        let pattern = patterns[mask]
++                        var inward = Vec3.zero, outward = Vec3.zero
++                        for c in 0..<4 {
++                            if mask & (1 << c) != 0 { inward += cell.position(tet[c]) }
++                            else { outward += cell.position(tet[c]) }
++                        }
++                        outward = outward / Double(4 - pattern.insideCount) - inward / Double(pattern.insideCount)
++                        var vertices = SIMD4<UInt32>.zero
++                        for e in pattern.edges.indices {
++                            let edge = pattern.edges[e]
++                            vertices[e] = vertex(tet[edge.x], tet[edge.y], cell)
++                        }
++                        if pattern.edges.count == 3 {
++                            triangle(vertices[0], vertices[1], vertices[2], outward: outward)
+                         } else {
+-                            let a = vertex(inside[0], outside[0], positions, grid, values)
+-                            let b = vertex(inside[0], outside[1], positions, grid, values)
+-                            let c = vertex(inside[1], outside[1], positions, grid, values)
+-                            let d = vertex(inside[1], outside[0], positions, grid, values)
++                            let a = vertices[0], b = vertices[1], c = vertices[2], d = vertices[3]
+                             let pa = Vec3(mesh.positions[Int(a)]), pb = Vec3(mesh.positions[Int(b)]), pc = Vec3(mesh.positions[Int(c)])
+                             if simd_dot(simd_cross(pb - pa, pc - pa), outward) < 0 {
+                                 mesh.indices += [a, c, b, a, d, c]
+-                            } else {
+-                                mesh.indices += [a, b, c, a, c, d]
+-                            }
++                            } else { mesh.indices += [a, b, c, a, c, d] }
+                         }
+                     }
+                 }

@@ -5,6 +5,7 @@ import TubelineCore
 
 @Observable
 final class AppModel {
+    var cameraRequest = PreviewCameraRequest()
     static let shared = AppModel()
 
     enum Destination: String, CaseIterable { case besideOriginal, folder }
@@ -20,14 +21,44 @@ final class AppModel {
             schedulePreview()
         }
     }
+    private var storedStartupOptions: ConversionOptions
+    var startupOptionsError: String?
+    var startupOptions: ConversionOptions {
+        get { storedStartupOptions }
+        set {
+            if let problem = ConversionOptionValidation.problem(in: newValue) {
+                startupOptionsError = problem + " Saved defaults haven’t changed."
+                return
+            }
+            do {
+                let data = try JSONEncoder().encode(newValue)
+                defaults.set(data, forKey: "defaultOptions")
+                storedStartupOptions = newValue
+                startupOptionsError = nil
+            } catch {
+                startupOptionsError = "The conversion defaults couldn’t be saved: \(error.localizedDescription)"
+            }
+        }
+    }
     var destination: Destination { didSet { savePreferences() } }
+    var exportFormat: ExportFormat {
+        didSet {
+            savePreferences()
+            updateFreshness()
+        }
+    }
     var folder: URL? {
         didSet {
             if let folder { folderAccess.remember(folder) }
             savePreferences()
         }
     }
-    var exportOnDrop: Bool { didSet { savePreferences() } }
+    var exportOnDrop: Bool {
+        didSet {
+            if !exportOnDrop { automaticExportIDs.removeAll() }
+            savePreferences()
+        }
+    }
     var previewURL: URL?
     var previewStats: ConversionStats?
     var previewError: String?
@@ -46,6 +77,8 @@ final class AppModel {
     private var exportTask: Task<Void, Never>?
     private var exportID: UUID?
     private var exportingIDs: Set<Job.ID> = []
+    private var automaticExportIDs: Set<Job.ID> = []
+    private var isPreparingExport = false
     private let previewDir: URL
 
     init(defaults: UserDefaults = .standard, worker: ConversionQueue = ConversionQueue(),
@@ -53,8 +86,12 @@ final class AppModel {
         self.defaults = defaults
         self.worker = worker
         self.authorizeFolders = authorizeFolders
-        options = Self.savedOptions(defaults)
+        let saved = Self.savedOptions(defaults)
+        storedStartupOptions = saved.options
+        options = saved.options
+        startupOptionsError = saved.error
         destination = Destination(rawValue: defaults.string(forKey: "destination") ?? "") ?? .besideOriginal
+        exportFormat = ExportFormat(rawValue: defaults.string(forKey: "exportFormat") ?? "") ?? .usdz
         folder = defaults.url(forKey: "folder")
         exportOnDrop = defaults.object(forKey: "exportOnDrop") as? Bool ?? false
         previewDir = FileManager.default.temporaryDirectory.appendingPathComponent("TubelinePreview-\(UUID().uuidString)", isDirectory: true)
@@ -62,26 +99,35 @@ final class AppModel {
         catch { previewError = error.localizedDescription }
     }
 
-    private static func savedOptions(_ defaults: UserDefaults) -> ConversionOptions {
-        (defaults.data(forKey: "defaultOptions") ?? defaults.data(forKey: "options"))
-            .flatMap { try? JSONDecoder().decode(ConversionOptions.self, from: $0) } ?? ConversionOptions()
+    private static func savedOptions(_ defaults: UserDefaults) -> (options: ConversionOptions, error: String?) {
+        var rejectedSavedValue = false
+        for key in ["defaultOptions", "options"] {
+            guard let data = defaults.data(forKey: key) else { continue }
+            if let decoded = try? JSONDecoder().decode(ConversionOptions.self, from: data),
+               ConversionOptionValidation.problem(in: decoded) == nil {
+                return (decoded, rejectedSavedValue ? "Some saved defaults were invalid. Valid settings are active; stored preferences were kept." : nil)
+            }
+            rejectedSavedValue = true
+        }
+        return (ConversionOptions(), rejectedSavedValue ? "Saved defaults were invalid. Built-in settings are active; stored preferences were kept." : nil)
     }
 
     private func savePreferences() {
         defaults.set(destination.rawValue, forKey: "destination")
+        defaults.set(exportFormat.rawValue, forKey: "exportFormat")
         defaults.set(folder, forKey: "folder")
         defaults.set(exportOnDrop, forKey: "exportOnDrop")
     }
 
     func saveCurrentAsDefaults() {
-        defaults.set(try? JSONEncoder().encode(options), forKey: "defaultOptions")
+        startupOptions = options
     }
 
     func resetSavedDefaults() {
-        defaults.set(try? JSONEncoder().encode(ConversionOptions()), forKey: "defaultOptions")
+        startupOptions = ConversionOptions()
     }
 
-    func restoreDefaults() { options = Self.savedOptions(defaults) }
+    func restoreDefaults() { options = startupOptions }
     func resetEditingOptions() {
         if editingScope == .selected { resetSelectedOverrides() } else { restoreDefaults() }
     }
@@ -120,6 +166,7 @@ final class AppModel {
             default: continue
             }
             let current = job.lastExportOptions == effectiveOptions(for: job) && job.lastExportRevision == job.revision
+                && job.lastExportURLs.map { $0.pathExtension.lowercased() } == exportFormat.formats.map(\.rawValue)
             job.status = current ? .exported(url) : .outdated(url)
         }
     }
@@ -135,26 +182,32 @@ final class AppModel {
         }
         exportError = nil
         var added: [Job] = []
+        var affected: [Job] = []
         for source in sources {
-            if let existing = jobs.first(where: { $0.source == source }) { refresh(existing) }
-            else {
+            if let existing = jobs.first(where: { $0.source == source }) {
+                refresh(existing, automaticallyExport: false)
+                affected.append(existing)
+            } else {
                 let job = Job(source: source)
                 jobs.append(job)
                 added.append(job)
+                affected.append(job)
             }
         }
         if selectedJob == nil { select(added.first?.id ?? jobs.first?.id) }
-        if exportOnDrop, !added.isEmpty { export(added) }
+        if exportOnDrop { enqueueAutomaticExport(affected) }
     }
 
-    func refresh(_ job: Job) {
+    func refresh(_ job: Job, automaticallyExport: Bool = true) {
         job.revision += 1
         if job.status != .working { job.status = job.lastExportURL.map(Job.Status.outdated) ?? .pending }
         if selection == job.id { schedulePreview(immediately: true) }
+        if automaticallyExport && exportOnDrop { enqueueAutomaticExport([job]) }
     }
     func refreshSelected() { if let job = selectedJob { refresh(job) } }
     func remove(_ job: Job) {
-        if exportingIDs.contains(job.id) { cancelExports() }
+        automaticExportIDs.remove(job.id)
+        if job.status == .working && exportingIDs.contains(job.id) { cancelExports() }
         jobs.removeAll { $0.id == job.id }
         if selection == job.id { select(jobs.first?.id) }
     }
@@ -170,21 +223,23 @@ final class AppModel {
 
     // MARK: Export
 
-    func outputURL(for job: Job) -> URL? {
+    /// Where an export would go, without an extension (each format adds its own).
+    func outputStem(for job: Job) -> URL? {
         let dir: URL
         if destination == .folder {
             guard let folder else { return nil }
             dir = folder
         } else { dir = job.source.deletingLastPathComponent() }
-        return dir.appendingPathComponent(job.name + ".usdz")
+        return dir.appendingPathComponent(job.name)
     }
     func exportAll() { export(jobs) }
     func exportSelected() { if let job = selectedJob { export([job]) } }
     func revealSelectedExport() {
-        if let url = selectedJob?.exportedURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        if let urls = selectedJob?.lastExportURLs, !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
     }
 
     func cancelExports() {
+        automaticExportIDs.removeAll()
         exportTask?.cancel()
         exportTask = nil
         exportID = nil
@@ -194,8 +249,27 @@ final class AppModel {
         isExporting = false
     }
 
+    private func enqueueAutomaticExport(_ list: [Job]) {
+        automaticExportIDs.formUnion(list.map(\.id))
+        drainAutomaticExports()
+    }
+
+    private func drainAutomaticExports() {
+        guard exportOnDrop, !isExporting, !isPreparingExport, !automaticExportIDs.isEmpty else { return }
+        let pending = jobs.filter { automaticExportIDs.contains($0.id) }
+        automaticExportIDs.removeAll()
+        // Capture current settings and source revisions when the request reaches the worker.
+        // Consuming the request first prevents failures from becoming automatic retries.
+        export(pending)
+    }
+
     func export(_ list: [Job]) {
-        guard !isExporting, !list.isEmpty else { return }
+        guard !isExporting, !isPreparingExport, !list.isEmpty else { return }
+        isPreparingExport = true
+        defer {
+            isPreparingExport = false
+            drainAutomaticExports()
+        }
         guard destination != .folder || folder != nil else {
             exportError = "Choose an output folder before exporting."
             return
@@ -203,19 +277,21 @@ final class AppModel {
         exportError = nil
         exportSummary = nil
         var reserved: Set<String> = []
+        let formats = exportFormat.formats
         let plans = list.compactMap { job -> ExportSnapshot? in
-            guard jobs.contains(where: { $0.id == job.id }), let proposed = outputURL(for: job) else { return nil }
-            return ExportSnapshot(job: job, output: ExportPlanner.uniqueURL(for: proposed, reserved: &reserved),
+            guard jobs.contains(where: { $0.id == job.id }), let proposed = outputStem(for: job) else { return nil }
+            let stem = ExportPlanner.uniqueStem(for: proposed, extensions: formats.map(\.rawValue), reserved: &reserved)
+            return ExportSnapshot(job: job, stem: stem, formats: formats,
                                   options: effectiveOptions(for: job), revision: job.revision,
                                   sourceStamp: SourceStamp(url: job.source))
         }
         guard !plans.isEmpty else { return }
-        let folders = plans.map { $0.output.deletingLastPathComponent() }
+        let folders = plans.map(\.folder)
         let denied = Set((authorizeFolders?(folders) ?? folderAccess.ensureWritable(folders)).map(\.standardizedFileURL))
-        for plan in plans where denied.contains(plan.output.deletingLastPathComponent().standardizedFileURL) {
-            plan.job.status = .failed("Tubeline doesn’t have permission to save in “\(plan.output.deletingLastPathComponent().lastPathComponent)”. Choose another folder or allow access, then retry.")
+        for plan in plans where denied.contains(plan.folder.standardizedFileURL) {
+            plan.job.status = .failed("Tubeline doesn’t have permission to save in “\(plan.folder.lastPathComponent)”. Choose another folder or allow access, then retry.")
         }
-        let allowed = plans.filter { !denied.contains($0.output.deletingLastPathComponent().standardizedFileURL) }
+        let allowed = plans.filter { !denied.contains($0.folder.standardizedFileURL) }
         guard !allowed.isEmpty else {
             exportError = "No files were exported. Allow access to the output folder or choose another folder."
             return
@@ -234,21 +310,37 @@ final class AppModel {
             for plan in allowed {
                 guard !Task.isCancelled, self.exportID == id else { return }
                 // Conversion never touches the final URL until this snapshot is accepted.
-                let stagingDirectory = plan.output.deletingLastPathComponent().appendingPathComponent(".Tubeline-\(UUID().uuidString)", isDirectory: true)
-                let staging = stagingDirectory.appendingPathComponent(plan.output.lastPathComponent)
+                let stagingDirectory = plan.folder.appendingPathComponent(".Tubeline-\(UUID().uuidString)", isDirectory: true)
+                let staged = plan.extensions.map {
+                    stagingDirectory.appendingPathComponent(plan.stem.lastPathComponent).appendingPathExtension($0)
+                }
                 defer { try? FileManager.default.removeItem(at: stagingDirectory) }
                 do {
                     try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: false)
-                    let report = try await self.worker.run(source: plan.job.source, output: staging, options: plan.options)
+                    let report = try await self.worker.run(source: plan.job.source, outputs: staged, options: plan.options)
                     try Task.checkCancellation()
-                    guard self.exportID == id else { try? FileManager.default.removeItem(at: staging); return }
+                    guard self.exportID == id else { return }
                     guard SourceStamp(url: plan.job.source) == plan.sourceStamp else {
                         throw AppConversionError.sourceChanged
                     }
+                    // Another app may have taken the name while converting; recheck every format.
                     var publicationReservations: Set<String> = []
-                    let final = ExportPlanner.uniqueURL(for: plan.output, reserved: &publicationReservations)
-                    try FileManager.default.moveItem(at: staging, to: final)
-                    plan.job.lastExportURL = final
+                    let finalStem = ExportPlanner.uniqueStem(for: plan.stem, extensions: plan.extensions,
+                                                             reserved: &publicationReservations)
+                    var published: [URL] = []
+                    do {
+                        for (file, ext) in zip(staged, plan.extensions) {
+                            let destination = finalStem.appendingPathExtension(ext)
+                            try FileManager.default.moveItem(at: file, to: destination)
+                            published.append(destination)
+                        }
+                    } catch {
+                        // Keep an icon's formats together: don't leave half an export behind.
+                        for file in published { try? FileManager.default.removeItem(at: file) }
+                        throw error
+                    }
+                    let final = published[0]
+                    plan.job.lastExportURLs = published
                     plan.job.lastExportOptions = plan.options
                     plan.job.lastExportRevision = plan.revision
                     plan.job.stats = ConversionStats(report)
@@ -256,10 +348,8 @@ final class AppModel {
                     plan.job.status = current ? .exported(final) : .outdated(final)
                     if !report.skipped.isEmpty { warnings += 1 }
                 } catch is CancellationError {
-                    try? FileManager.default.removeItem(at: staging)
                     return
                 } catch {
-                    try? FileManager.default.removeItem(at: staging)
                     guard self.exportID == id else { return }
                     plan.job.status = .failed(error.localizedDescription)
                     failures += 1
@@ -272,6 +362,7 @@ final class AppModel {
             self.exportTask = nil
             self.exportID = nil
             self.exportSummary = "\(plans.count - failures) exported, \(warnings) with warnings, \(failures) failed."
+            self.drainAutomaticExports()
         }
     }
 
@@ -294,7 +385,7 @@ final class AppModel {
             guard let self else { return }
             do {
                 if !immediately { try await Task.sleep(for: .milliseconds(200)) }
-                let report = try await self.worker.run(source: source, output: out, options: snapshot)
+                let report = try await self.worker.run(source: source, outputs: [out], options: snapshot)
                 try Task.checkCancellation()
                 guard self.selection == job.id, self.effectiveOptions(for: job) == snapshot, job.revision == revision else {
                     try? FileManager.default.removeItem(at: out)

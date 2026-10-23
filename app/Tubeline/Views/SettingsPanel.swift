@@ -28,7 +28,14 @@ struct SettingsPanel: View {
             }
             .padding(16)
             Divider()
+            MeshControls(detail: $model.editingOptions.facets)
+                .padding(16)
+            Divider()
             Form {
+                Section("Mesh Optimization") {
+                    Toggle("Optimize Mesh", isOn: $model.editingOptions.optimize)
+                        .help("Reduce triangle count while preserving the surface.")
+                }
                 Section("Shape") {
                     LabeledSlider(title: "Thickness", value: $model.editingOptions.thickness, range: 0.25...3, step: 0.05,
                                   format: { String(format: "%.2f×", $0) }, help: "Tube diameter as a multiple of the SVG stroke width.")
@@ -44,6 +51,8 @@ struct SettingsPanel: View {
                         Text("Round").tag(ConversionOptions.Caps.round)
                         Text("Flat").tag(ConversionOptions.Caps.flat)
                     }
+                    LabeledSlider(title: "Intersection Blend", value: $model.editingOptions.fillet, range: 0...1, step: 0.05,
+                                  format: { $0 == 0 ? "None" : String(format: "%.2f", $0) })
                 }
                 Section("Surface") {
                     Picker("Material", selection: $model.editingOptions.surface) {
@@ -60,29 +69,17 @@ struct SettingsPanel: View {
                         Text("Fit Size").tag(ConversionOptions.Sizing.fixed)
                     }
                     if model.editingOptions.sizing == .fixed {
-                        HStack {
-                            Text("Longest Side")
-                            Spacer()
-                            TextField("Longest Side in Centimeters", value: $model.editingOptions.size, format: .number.precision(.fractionLength(0...2)))
-                                .labelsHidden().multilineTextAlignment(.trailing).frame(width: 70)
-                            Text("cm").foregroundStyle(.secondary)
-                        }
+                        ValidatedNumberField(title: "Longest Side", accessibilityTitle: "Longest Side in Centimeters",
+                                             value: $model.editingOptions.size, unit: "cm", contextID: numericContext)
                     }
                     Picker("Frame", selection: $model.editingOptions.framing) {
                         Text("SVG Canvas").tag(ConversionOptions.Framing.canvas)
                         Text("Artwork").tag(ConversionOptions.Framing.content)
                     }
                     .help("Uses the canvas or artwork bounds to center the model. Fit Size scales this frame.")
-                    HStack {
-                        Text("Output Scale")
-                        Spacer()
-                        TextField("Output Scale Multiplier", value: $model.editingOptions.outputScale, format: .number)
-                            .labelsHidden().multilineTextAlignment(.trailing).frame(width: 55)
-                        Text("×").foregroundStyle(.secondary)
-                        Stepper("Output Scale", value: $model.editingOptions.outputScale, in: 1...10_000)
-                            .labelsHidden().fixedSize()
-                    }
-                    .help("Multiplies the model's final dimensions. Use a larger scale for 3D apps that work with larger objects.")
+                    ValidatedScaleField(accessibilityTitle: "Output Scale Multiplier", value: $model.editingOptions.outputScale,
+                                        contextID: numericContext)
+                        .help("Multiplies the model's final dimensions. Use a larger scale for 3D apps that work with larger objects.")
                     HStack(spacing: 8) {
                         Text("Presets").font(.caption).foregroundStyle(.secondary)
                         ForEach([1, 10, 100], id: \.self) { scale in
@@ -93,38 +90,27 @@ struct SettingsPanel: View {
                     .controlSize(.small)
                     Text(sizeExplanation).font(.caption).foregroundStyle(.secondary)
                 }
-                Section {
-                    DisclosureGroup("Advanced") {
-                        LabeledSlider(title: "Detail", value: $model.editingOptions.facets, range: 12...96, step: 2,
-                                      format: { "\(Int($0))" }, help: "Target curve detail. Higher values produce smoother silhouettes and heavier meshes.")
-                        Toggle("Optimize Mesh", isOn: $model.editingOptions.optimize)
-                        LabeledSlider(title: "Intersection Blend", value: $model.editingOptions.fillet, range: 0...1, step: 0.05,
-                                      format: { $0 == 0 ? "None" : String(format: "%.2f", $0) })
-                        Toggle("Include Fills", isOn: $model.editingOptions.includeFills)
-                        if model.editingOptions.includeFills {
-                            Picker("Fills Without Outlines", selection: $model.editingOptions.fillStyle) {
-                                Text("Extrude").tag(ConversionOptions.FillStyle.extruded)
-                                Text("Rounded").tag(ConversionOptions.FillStyle.rounded)
-                            }
-                            if model.editingOptions.fillStyle == .extruded {
-                                HStack {
-                                    Text("Depth")
-                                    Spacer()
-                                    TextField("Extrusion Depth in Points", value: $model.editingOptions.extrudeDepth, format: .number.precision(.fractionLength(0...2)))
-                                        .labelsHidden().multilineTextAlignment(.trailing).frame(width: 65)
-                                    Text("pt").foregroundStyle(.secondary)
-                                }
-                                LabeledSlider(title: "Edge Rounding", value: $model.editingOptions.extrudeRounding, range: 0...1, step: 0.05,
-                                              format: { $0 == 0 ? "Sharp" : String(format: "%.2f", $0) })
-                            }
+                Section("Fills") {
+                    Toggle("Include Fills", isOn: $model.editingOptions.includeFills)
+                    if model.editingOptions.includeFills {
+                        Picker("Fills Without Outlines", selection: $model.editingOptions.fillStyle) {
+                            Text("Extrude").tag(ConversionOptions.FillStyle.extruded)
+                            Text("Rounded").tag(ConversionOptions.FillStyle.rounded)
                         }
-                        if model.editingOptions.sizing == .points {
-                            HStack {
-                                Text("Millimeters per Point")
-                                Spacer()
-                                TextField("Millimeters per Artwork Point", value: $model.editingOptions.millimetersPerPoint, format: .number.precision(.fractionLength(0...4)))
-                                    .labelsHidden().multilineTextAlignment(.trailing).frame(width: 75)
-                            }
+                        if model.editingOptions.fillStyle == .extruded {
+                            ValidatedNumberField(title: "Depth", accessibilityTitle: "Extrusion Depth in Points",
+                                                 value: $model.editingOptions.extrudeDepth, unit: "pt", contextID: numericContext)
+                            LabeledSlider(title: "Edge Rounding", value: $model.editingOptions.extrudeRounding, range: 0...1, step: 0.05,
+                                          format: { $0 == 0 ? "Sharp" : String(format: "%.2f", $0) })
+                        }
+                    }
+                }
+                if model.editingOptions.sizing == .points {
+                    Section {
+                        DisclosureGroup("Unit Calibration") {
+                            ValidatedNumberField(title: "Millimeters per Point", accessibilityTitle: "Millimeters per Artwork Point",
+                                                 value: $model.editingOptions.millimetersPerPoint, unit: "", fractionDigits: 4,
+                                                 contextID: numericContext)
                         }
                     }
                 }
@@ -141,6 +127,10 @@ struct SettingsPanel: View {
                 .controlSize(.small).padding(12)
             }
         }
+    }
+
+    private var numericContext: String {
+        model.editingScope == .batch ? "batch" : "selected-\(model.selection?.uuidString ?? "none")"
     }
 
     private var sizeExplanation: String {

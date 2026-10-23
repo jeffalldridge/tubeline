@@ -2,15 +2,23 @@
 
 A rolling log of the last ten sessions, newest first. Older entries move to `archive/`.
 
-## October 22, 2026: Prepare 0.2.0 for Colleague Review
+## October 22, 2026 (Evening): Per-Sheet Contouring and GLB Export
+
+**Worked on:** Pressure-tested Codex's 0.2.0 follow-up branch (49 core and 74 app tests, full corpus). Profiling showed the dense tetrahedral fallback cost most of the time on 42 icons, so dual contouring now emits one vertex per surface sheet with face-consistent grouping, orients quads from grid-edge signs, and separates coincident corner vertices. Fallbacks fell from 42 to 2 and corpus time from 408 s to 186 s. Added GLB export (engine, CLI `--format`, app Format menu) validated by the Khronos glTF Validator in CI. Fixed empty-state copy, the zero-icon export title, and test preference files that piled up in the app container.
+
+**State after:** 56 core and 82 app tests pass; PR #8 ready to merge into `main` for 0.3.0. GLB not yet tried in After Effects or Cinema 4D.
+
+## October 22, 2026: Release 0.2.0 for Colleague Review
 
 **Worked on:** Independent engine, export, and app audits followed by geometry validation, safer export state, batch settings with per-field overrides, saved defaults, visible output controls and triangle counts, integer output scaling, and repaired camera commands. Front uses an orthographic camera with zero rotation. USDZ remains XY artwork facing +Z, Y up, with no baked camera or rotation.
 
 **Evidence:** Fifty-six app tests passed; all 162 test SVGs passed strict mesh validation. Six original samples passed `usdchecker --arkit`. Native checks covered export destinations, collision handling, inheritance, scale, and Front/Reset controls. Jeff reports that the earlier USDZ output imports well into Motion; the new release still needs his Motion and Cinema 4D acceptance.
 
+**Follow-up:** On `codex/mesh-optimization`, committed stronger vertical-orientation coverage (`0b5f9ba`), release metadata guards (`8de26ac`), queued automatic exports and settled-row removal fixes (`a5cc62e`), and an internal early verdict for already-invalid meshes (`b4a7aeb`). Sixty-one app tests and forty-four core tests passed. All 162 outputs matched the release baseline in geometry/index and normal hashes, triangle counts, strict validity, and warning counts. A controlled three-pair experiment on one complex icon measured an 8.1 percent median reduction; do not generalize that to every icon. Further extractor experiments remain unmerged. Commit `829e1a9` also fixes a reproduced concurrent CLI keep-both race using sibling staging and exclusive atomic publication, with a regression harness added to CI. The released CLI still has this race; avoid concurrent commands writing to the same output folder until the follow-up ships.
+
 **Tradeoff:** Forty-two corpus icons take a denser validated path. Across that group, median output is 146,382 triangles and median parse-and-mesh time is 5.619 s. Do not weaken topology checks to improve these numbers. The next task is reducing fallback extraction and simplification cost while preserving the whole-icon SDF.
 
-**Release handoff:** Jeff authorized logical commits, pushing, and a signed, notarized 0.2.0 release. The release script verifies signing, sandboxing, notarization, and Gatekeeper acceptance before publishing. Record the actual release result after it finishes. Keep further optimization separate from the v0.2.0 tag.
+**Release handoff:** Jeff authorized logical commits, pushing, and a signed, notarized 0.2.0 release. Published v0.2.0 from commit `0fba569` with a signed, notarized, stapled DMG and a signed, notarized CLI. Gatekeeper accepted both app and DMG. GitHub CI run `39860251368` passed for that exact commit, including engine build/tests, sample USDZ validation, and app tests. The actual stored notary profile is `syntaxlook-notary`. Further work is on `codex/mesh-optimization`; preserve the release tag. See `docs/next-work.md`.
 
 ## October 22, 2026: From Idea to Public 0.1.0 Release
 

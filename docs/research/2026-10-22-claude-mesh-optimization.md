@@ -62,6 +62,25 @@ Forty-two icons used the denser path. The app and CLI warn when this happens; th
 
 The app-hosted suite passed forty-nine tests, including eight app-state regressions; `swift test` passed the forty-one engine tests separately. All six tracked samples exported, rendered to PNG, and passed `usdchecker --arkit`. Native app checks covered per-field inheritance, repeated exports without replacement, Finder reveal, visible camera and output controls, and the accessible preview. Output Scale 100× changed the test heart's width from approximately 0.706 cm to 70.59 cm while retaining 8,038 triangles. Six independent identical CLI conversions also produced identical USDZ hashes.
 
+## First Post-Release Validation Optimization
+
+The retry path needs a validity verdict, while the public validation method provides a complete diagnostic report. Once edge, face, index, or finite-value checks have established failure, retry decisions can skip construction and traversal of per-vertex adjacency dictionaries. Otherwise, vertex neighborhoods are still checked, including the case of two closed tetrahedra touching at only one vertex. The public complete report is unchanged.
+
+Three alternating baseline/candidate runs on one complex fallback icon produced these parse-and-mesh timings:
+
+| Run | Release Baseline | Fast Verdict |
+| --- | --- | --- |
+| 1 | 5.706 s | 5.127 s |
+| 2 | 5.707 s | 5.246 s |
+| 3 | 5.764 s | 5.249 s |
+| Median | 5.707 s | 5.246 s |
+
+The median decreased by about 8.1 percent for this case. Each output had 175,194 triangles and identical geometry/index and normal SHA-256 digests. This does not establish an equivalent speedup across the corpus.
+
+A separate complete comparison covered all 162 SVGs. Triangle counts, strict validation results, geometry/index hashes, normal hashes, and warning counts matched the release baseline exactly. The broad runs overlapped other work and are not controlled timing evidence. The standalone suite passed forty-four tests, and the app-hosted suite passed sixty-one, including the queued-export fixes developed alongside this optimization.
+
+Larger experiments—deferred normals, packed edge keys, case-table extraction, scalar validation, and earlier rejection of irreparable edge failures—remain temporary. Measure and validate them separately before changing the production extractor.
+
 ## Licenses
 
 meshoptimizer: MIT. probabilistic-quadrics: MIT. Manifold: Apache 2.0. OpenMesh: BSD 3-Clause. CGAL: GPL or commercial (avoid).

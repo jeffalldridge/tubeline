@@ -4,9 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%C2%B7%20Apple%20silicon-lightgrey)
 
-Tubeline is a free Mac app that turns stroked SVG icons into 3D tube models. It saves them as USDZ files for Apple Motion and other motion graphics apps that import USDZ.
+Tubeline is a free Mac app that turns stroked SVG icons into 3D tube models for motion graphics apps. It saves USDZ files for Apple Motion and other Apple apps, and GLB files for After Effects, Cinema 4D, Blender, and web tools.
 
-Drop SVG files or folders onto the window, adjust the batch settings, and preview an icon. Each stroke becomes a round tube as thick as the stroke. Choose where to save the models in the output bar, then click Export. Existing files are kept; exports receive numbered names when needed.
+Drop SVG files or folders onto the window, adjust the batch settings, and preview an icon. Each stroke becomes a round tube as thick as the stroke. Choose a format (USDZ, GLB, or both) and where to save the models in the output bar, then click Export. Existing files are kept; exports receive numbered names when needed.
 
 Batch settings apply to every icon. Choose Selected Icon to customize individual values while the rest continue to follow the batch. Show Form lights the preview to help inspect its geometry without changing the exported material. Fit, Front, and Reset View control the camera.
 
@@ -30,7 +30,8 @@ It simplifies the surface by collapsing edges and sampling the distance to the e
 | `stroke-dasharray` and `stroke-dashoffset` | A separate tube for each dash, with the path's caps. Zero-length dashes with round caps become dots. |
 | A closed shape with both an outline and a fill | A solid disc whose edge matches the outline tube |
 | A fill with no outline (e.g., outlined text) | An extrusion at the depth you choose, with optional rounded edges, or a rounded slab |
-| A shape with no `fill` attribute | No fill. SVG's default black fill is ignored so line icons don't turn into solid blobs. |
+| A shape with no fill or stroke paint declared | SVG’s default black fill becomes an extrusion; no outline is added. |
+| A stroked shape with no `fill` attribute | No fill, preserving line icons that omit `fill="none"`. Declare a fill to include both. |
 
 Tubeline also reads every `path` command (including arcs), `line`, `polyline`, `polygon`, `rect` (with rounded corners), `circle`, `ellipse`, groups, nested transforms, inline styles, simple CSS class rules like those Illustrator exports, and `display="none"`. It skips `<text>`, `<image>`, and `<use>` and tells you when it does; convert text to outlines before importing.
 
@@ -39,7 +40,7 @@ Clipping, masks, filters, nested SVG viewports, and non-scaling strokes are unsu
 ## Settings
 
 - **Thickness:** tube diameter as a multiple of the stroke width.
-- **Detail:** the target curve detail (default 32), under Advanced. This controls meshing density, rather than an exact count of polygon sides. Higher values make heavier meshes.
+- **Mesh Detail:** the target curve detail (default 32), pinned above the scrolling settings. The slider spans 6–64, with Draft (6), Low (16), Balanced (32), and High (64) presets to compare triangle counts. This controls meshing density, rather than an exact count of polygon sides. Higher values make heavier meshes.
 - **Optimize Mesh:** simplifies the model (on by default). Turn it off to keep the dense mesh.
 - **Ends:** the SVG's own line caps, or always round or always flat.
 - **Intersections:** Crisp, Soft, or Round, with a slider to fine-tune the blend.
@@ -49,9 +50,11 @@ Clipping, masks, filters, nested SVG viewports, and non-scaling strokes are unsu
 - **Frame:** center the model on the SVG canvas, which keeps a set of icons aligned, or on the artwork itself.
 - **Output Scale:** a whole-number multiplier applied after sizing, with 1×, 10×, and 100× presets. This makes small icons practical in 3D apps that use larger working dimensions. It can follow the batch or be customized for one icon.
 
-Each file contains a single mesh with smooth normals and one `UsdPreviewSurface` material. Models are Y-up and measured in centimeters (`metersPerUnit = 0.01`), with no lights or cameras, and they pass Apple's `usdchecker`.
+- **Format** (in the output bar): USDZ (the default) for Apple Motion and other Apple apps, GLB for After Effects, Cinema 4D, Blender, and web tools, or both. Both formats come from the same mesh, and an icon's files share one name.
 
-App Settings lets you save the current batch settings as defaults for future sessions. Automatic export is off for new installations; you can enable it there after choosing your settings and destination. Cancel Export keeps completed files and stops remaining work. A conversion already meshing finishes its current stage before cancellation takes effect.
+Each file contains a single mesh with smooth normals and one material, with no lights or cameras. USDZ files use a `UsdPreviewSurface` material, are Y-up, are measured in centimeters (`metersPerUnit = 0.01`), and pass Apple's `usdchecker`. GLB files are binary glTF 2.0, Y-up, and measured in meters, as glTF requires; Solid Color uses the `KHR_materials_unlit` extension, and every file passes the Khronos glTF Validator.
+
+App Settings lets you set default Detail, mesh optimization, thickness, and output scale directly, or save every current batch setting as defaults. These preferences are saved automatically for future sessions; Restore Saved Defaults applies them to the active batch. Automatic export is off for new installations; you can enable it there after choosing your settings and destination. Files added or refreshed during an automatic export wait for the current batch. Cancel Export clears that queue, keeps completed files, and stops remaining work. A conversion already meshing finishes its current stage before cancellation takes effect.
 
 ### Sizing in Motion
 
@@ -90,7 +93,7 @@ To make a notarized release, run `scripts/release.sh --publish`. It runs the tes
 
 ```
 Package.swift           TubelineCore engine and tubeline command-line tool
-Sources/TubelineCore/   SVG parsing, dashes, meshing, USDZ writing, preview scene
+Sources/TubelineCore/   SVG parsing, dashes, meshing, USDZ and GLB writing, preview scene
 Sources/tubeline/       Command-line tool
 app/                    Mac app (project.yml, SwiftUI sources, unit tests)
 Samples/                Test SVGs (Samples/User is yours and ignored by Git)
@@ -99,7 +102,7 @@ docs/                   Research, release, and testing notes
 
 ## Roadmap
 
-GLB export for After Effects and other apps is next, and USDZ will stay the default. See the [roadmap](ROADMAP.md) for what's planned.
+See the [roadmap](ROADMAP.md) for what's planned.
 
 ## Contributing
 

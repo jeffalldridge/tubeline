@@ -53,7 +53,7 @@ final class SVGParsingTests: XCTestCase {
         XCTAssertEqual(d.skipped, ["<text>"])
     }
 
-    func testOnlyExplicitFillsCount() throws {
+    func testStrokedLineArtStillRequiresExplicitFills() throws {
         let d = try doc(##"<circle cx="12" cy="12" r="5" fill="#000"/><circle cx="4" cy="4" r="2"/>"##,
                         root: ##"viewBox="0 0 24 24" stroke="#000""##)
         XCTAssertEqual(d.fills.count, 1, "the default black fill must not turn line art into solids")
@@ -66,6 +66,45 @@ final class SVGParsingTests: XCTestCase {
         XCTAssertEqual(d.fills.count, 1)
         XCTAssertNil(d.fills[0].strokeWidth)
         XCTAssertTrue(d.strokes.isEmpty)
+    }
+
+    func testDefaultFilledShapesDoNotAcquireStrokes() throws {
+        for body in ["<rect x='2' y='2' width='8' height='6'/>",
+                     "<circle cx='12' cy='12' r='4'/>",
+                     "<path d='M2 2h8v6H2z'/>",
+                     "<path d='M2 2h8v6H2z' stroke='none'/>"] {
+            let d = try doc(body, root: "viewBox='0 0 24 24'")
+            XCTAssertEqual(d.fills.count, 1, body)
+            XCTAssertTrue(d.strokes.isEmpty, body)
+            XCTAssertNil(d.fills.first?.strokeWidth, body)
+        }
+    }
+
+    func testDefaultFillRespectsExplicitNoneAndOpacity() throws {
+        for attributes in ["fill='none'", "fill-opacity='0'", "opacity='0'"] {
+            let d = try doc("<rect width='8' height='6' \(attributes)/>", root: "viewBox='0 0 24 24'")
+            XCTAssertTrue(d.isEmpty, attributes)
+        }
+    }
+
+    func testZeroWidthStrokeDoesNotMakeFillAnOutlinedSlab() throws {
+        let d = try doc("<rect width='8' height='6' fill='black' stroke='red' stroke-width='0'/>")
+        XCTAssertEqual(d.fills.count, 1)
+        XCTAssertTrue(d.strokes.isEmpty)
+        XCTAssertNil(d.fills.first?.strokeWidth)
+    }
+
+    func testMixedIllustratorClassesKeepDefaultFillsSeparateFromStrokes() throws {
+        let d = try doc("""
+            <defs><style>.line{fill:none;stroke:black;stroke-width:2;}.solid{stroke:none;}</style></defs>
+            <path class='solid' fill-rule='evenodd' d='M2 2h12v12H2z M5 5v6h6V5z'/>
+            <path class='line' d='M18 2v12'/>
+            """, root: "viewBox='0 0 24 24'")
+        XCTAssertEqual(d.strokes.count, 1)
+        XCTAssertEqual(d.fills.count, 1)
+        XCTAssertEqual(d.fills.first?.contours.count, 2)
+        XCTAssertEqual(d.fills.first?.evenOdd, true)
+        XCTAssertNil(d.fills.first?.strokeWidth)
     }
 
     func testIllustratorStyleClasses() throws {

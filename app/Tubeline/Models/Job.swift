@@ -19,7 +19,9 @@ final class Job: Identifiable {
     var stats: ConversionStats?
     var overrides = ConversionOverrides()
     var revision = 0
-    var lastExportURL: URL?
+    /// Every file written by the last export, in format order (USDZ first).
+    var lastExportURLs: [URL] = []
+    var lastExportURL: URL? { lastExportURLs.first }
     var lastExportOptions: ConversionOptions?
     var lastExportRevision: Int?
 
