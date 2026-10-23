@@ -180,15 +180,58 @@ final class MeshingTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ConversionOptions.self, from: JSONEncoder().encode(options)), options)
     }
 
-    func testAmbiguousContourFallbackProducesAClosedManifold() {
+    private func crossingX(cm: Double) -> [PrimitiveGroup] {
+        [PrimitiveGroup(primitives: [.capsule(Vec3(-8,-8,0) * cm, Vec3(8,8,0) * cm, cm)]),
+         PrimitiveGroup(primitives: [.capsule(Vec3(8,-8,0) * cm, Vec3(-8,8,0) * cm, cm)])]
+    }
+
+    func testCrossingSheetsContourToAManifoldWithoutFallback() {
+        // Before per-sheet contouring, this X pinched at its crease and needed the dense fallback.
         let cm = 2.54 / 72
-        let groups = [
-            PrimitiveGroup(primitives: [.capsule(Vec3(-8,-8,0) * cm, Vec3(8,8,0) * cm, cm)]),
-            PrimitiveGroup(primitives: [.capsule(Vec3(8,-8,0) * cm, Vec3(-8,8,0) * cm, cm)]),
-        ]
-        let m = FusedMesher(groups: groups, voxel: 2 * .pi * cm / (32 * 1.4), blend: 0).build()
+        let m = FusedMesher(groups: crossingX(cm: cm), voxel: 2 * .pi * cm / (32 * 1.4), blend: 0,
+                            tolerance: cm * (1 - cos(.pi / 32))).build()
+        assertWatertight(m)
+        XCTAssertFalse(m.warnings.contains { $0.contains("denser mesh") })
+    }
+
+    func testTetrahedralFallbackProducesAClosedManifold() {
+        let cm = 2.54 / 72
+        var mesher = FusedMesher(groups: crossingX(cm: cm), voxel: 2 * .pi * cm / (32 * 1.4), blend: 0)
+        mesher.forceTetrahedralFallback = true
+        let m = mesher.build()
         assertWatertight(m)
         XCTAssertTrue(m.warnings.contains { $0.contains("denser mesh") })
+    }
+
+    func testCellWithOneCornerInsideHasOneSheet() {
+        var v = [Float](repeating: 1, count: 8)
+        v[0] = -1
+        let (packed, count) = FusedMesher.sheets(values: v)
+        XCTAssertEqual(count, 1)
+        // Edges 0, 4, and 8 touch corner 0; all belong to sheet 0.
+        for e in [0, 4, 8] { XCTAssertEqual((packed >> (4 * UInt64(e))) & 0xF, 0) }
+    }
+
+    func testOppositeCubeCornersFormTwoSheets() {
+        var v = [Float](repeating: 1, count: 8)
+        v[0] = -1
+        v[7] = -1
+        XCTAssertEqual(FusedMesher.sheets(values: v).count, 2)
+    }
+
+    func testAmbiguousFaceFollowsItsSaddle() {
+        // Corners 0 and 3 are inside, diagonally across the z = 0 face.
+        var weak = [Float](repeating: 1, count: 8)
+        weak[0] = -0.2; weak[3] = -0.2
+        weak[1] = 1; weak[2] = 1
+        // The saddle is outside, so each inside corner is cut off: two sheets.
+        XCTAssertEqual(FusedMesher.sheets(values: weak).count, 2)
+
+        var strong = [Float](repeating: 1, count: 8)
+        strong[0] = -1; strong[3] = -1
+        strong[1] = 0.1; strong[2] = 0.1
+        // The saddle is inside, so the inside corners connect across the face: one sheet.
+        XCTAssertEqual(FusedMesher.sheets(values: strong).count, 1)
     }
 
     func testFastValidationStillRejectsPinchedVerticesWithClosedEdges() {

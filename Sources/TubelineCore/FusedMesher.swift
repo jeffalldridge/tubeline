@@ -12,6 +12,62 @@ struct FusedMesher {
     var blend: Double
     /// Maximum distance between the simplified mesh and the exact surface; 0 skips simplification.
     var tolerance: Double = 0
+    /// Testing hook: treat the dual contour as invalid so the tetrahedral fallback runs.
+    var forceTetrahedralFallback = false
+
+    /// Cube corners, numbered x + 2y + 4z.
+    static let corners: [SIMD3<Int>] = [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]]
+    /// Cube edges as corner pairs: x edges 0–3, y edges 4–7, z edges 8–11.
+    static let cubeEdges: [(Int, Int)] = [(0,1),(2,3),(4,5),(6,7),(0,2),(1,3),(4,6),(5,7),(0,4),(1,5),(2,6),(3,7)]
+    /// Each cube face as four corners in cyclic order, with the edge between each corner and the next.
+    static let faces: [(corners: [Int], edges: [Int])] = {
+        func edge(_ a: Int, _ b: Int) -> Int {
+            cubeEdges.firstIndex { ($0.0 == a && $0.1 == b) || ($0.0 == b && $0.1 == a) }!
+        }
+        let cycles = [[0, 2, 6, 4], [1, 3, 7, 5], [0, 1, 5, 4], [2, 3, 7, 6], [0, 1, 3, 2], [4, 5, 7, 6]]
+        return cycles.map { c in (c, (0..<4).map { edge(c[$0], c[($0 + 1) % 4]) }) }
+    }()
+
+    /// Groups a cell's crossing edges into separate sheets of surface. Two crossings on a face
+    /// belong to the same sheet. A face with four crossings is ambiguous; it's resolved from that
+    /// face's own corner values (the asymptotic decider), so both cells sharing the face agree and
+    /// the result is manifold. Returns a 4-bit sheet number per cube edge and the sheet count.
+    static func sheets(values v: [Float]) -> (edgeSheet: UInt64, count: Int) {
+        var parent = Array(0..<12)
+        func find(_ x: Int) -> Int {
+            var x = x
+            while parent[x] != x { parent[x] = parent[parent[x]]; x = parent[x] }
+            return x
+        }
+        func union(_ a: Int, _ b: Int) { parent[find(a)] = find(b) }
+        func crosses(_ e: Int) -> Bool { (v[cubeEdges[e].0] < 0) != (v[cubeEdges[e].1] < 0) }
+
+        for face in faces {
+            let crossing = face.edges.filter(crosses)
+            if crossing.count == 2 {
+                union(crossing[0], crossing[1])
+            } else if crossing.count == 4 {
+                let c = face.corners.map { Double(v[$0]) }
+                let denominator = c[0] + c[2] - c[1] - c[3]
+                let saddle = abs(denominator) > 1e-12 ? (c[0] * c[2] - c[1] * c[3]) / denominator : c.reduce(0, +) / 4
+                // Corners whose sign differs from the saddle are cut off on their own; pair the
+                // two edges around each of them. Edge n runs from corner n to corner n + 1.
+                let isolated = (c[0] < 0) != (saddle < 0) ? [0, 2] : [1, 3]
+                for corner in isolated {
+                    union(face.edges[(corner + 3) % 4], face.edges[corner])
+                }
+            }
+        }
+        var label = [Int](repeating: -1, count: 12)
+        var count = 0
+        var packed: UInt64 = 0
+        for e in 0..<12 where crosses(e) {
+            let root = find(e)
+            if label[root] < 0 { label[root] = count; count += 1 }
+            packed |= UInt64(label[root]) << (4 * UInt64(e))
+        }
+        return (packed, count)
+    }
 
     func build() -> Mesh {
         var profiler = Profiler()
@@ -52,21 +108,22 @@ struct FusedMesher {
         }
         profiler.lap("sample \(nx)×\(ny)×\(nz) grid")
 
-        // 2. Dual contouring: one vertex per cell that straddles the surface.
+        // 2. Dual contouring with one vertex per separate sheet of surface in each cell.
+        // A single vertex per cell pinches two sheets together where strokes nearly touch,
+        // which makes the mesh non-manifold (dual marching cubes; Nielson 2004).
         let cx = nx - 1, cy = ny - 1, cz = nz - 1
-        var cellVertex = [Int32](repeating: -1, count: cx * cy * cz)
         var mesh = Mesh()
         var creases = Set<Int>()
-        let corners: [SIMD3<Int>] = [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]]
-        let cubeEdges: [(Int, Int)] = [(0,1),(2,3),(4,5),(6,7),(0,2),(1,3),(4,6),(5,7),(0,4),(1,5),(2,6),(3,7)]
+        let corners = Self.corners, cubeEdges = Self.cubeEdges
 
         // Cells are independent, so rows are contoured in parallel and merged in order afterwards.
-        struct CellVertex { var cell: Int; var p: Vec3; var n: Vec3; var crease: Bool }
-        var rows = [[CellVertex]](repeating: [], count: cy)
+        struct Sheet { var p: Vec3; var mass: Vec3; var n: Vec3; var crease: Bool }
+        struct ActiveCell { var cell: Int; var edgeSheet: UInt64; var sheets: [Sheet] }
+        var rows = [[ActiveCell]](repeating: [], count: cy)
         field.withUnsafeBufferPointer { field in
             rows.withUnsafeMutableBufferPointer { rows in
                 DispatchQueue.concurrentPerform(iterations: cy) { j in
-                    var out: [CellVertex] = []
+                    var out: [ActiveCell] = []
                     var v = [Float](repeating: 0, count: 8)
                     var normals: [Vec3] = []
                     normals.reserveCapacity(12)
@@ -81,63 +138,94 @@ struct FusedMesher {
                                 if v[c] < 0 { mask |= 1 << c }
                             }
                             guard mask != 0 && mask != 255 else { continue }
-                            // Dual contouring: find where each crossing edge meets the exact surface and its
-                            // normal there, then place the vertex where those tangent planes agree. This puts
-                            // vertices on creases, so hard intersections and flat cap rims stay sharp.
+                            let (edgeSheet, sheetCount) = Self.sheets(values: v)
+                            // Dual contouring: for each sheet, find where its crossing edges meet the exact
+                            // surface and the normals there, then place the vertex where those tangent planes
+                            // agree. This puts vertices on creases, so hard intersections stay sharp.
                             let cellMin = origin + Vec3(Double(i), Double(j), Double(k)) * h
-                            var mass = Vec3.zero
-                            var ata = simd_double3x3(0)
-                            var atb = Vec3.zero
-                            var nsum = Vec3.zero
-                            normals.removeAll(keepingCapacity: true)
-                            for (a, b) in cubeEdges where (v[a] < 0) != (v[b] < 0) {
-                                let pa = cellMin + SIMD3<Double>(corners[a]) * h
-                                let pb = cellMin + SIMD3<Double>(corners[b]) * h
-                                let q = lookup.edgeCrossing(pa, pb, Double(v[a]), Double(v[b]))
-                                let n = lookup.gradient(q, eps: h * 0.02)
-                                ata += simd_double3x3(rows: [n * n.x, n * n.y, n * n.z])
-                                atb += n * simd_dot(n, q)
-                                mass += q
-                                nsum += n
-                                normals.append(n)
+                            var sheets: [Sheet] = []
+                            for sheet in 0..<sheetCount {
+                                var mass = Vec3.zero
+                                var ata = simd_double3x3(0)
+                                var atb = Vec3.zero
+                                var nsum = Vec3.zero
+                                normals.removeAll(keepingCapacity: true)
+                                for (e, (a, b)) in cubeEdges.enumerated() where (v[a] < 0) != (v[b] < 0) {
+                                    guard Int((edgeSheet >> (4 * UInt64(e))) & 0xF) == sheet else { continue }
+                                    let pa = cellMin + SIMD3<Double>(corners[a]) * h
+                                    let pb = cellMin + SIMD3<Double>(corners[b]) * h
+                                    let q = lookup.edgeCrossing(pa, pb, Double(v[a]), Double(v[b]))
+                                    let n = lookup.gradient(q, eps: h * 0.02)
+                                    ata += simd_double3x3(rows: [n * n.x, n * n.y, n * n.z])
+                                    atb += n * simd_dot(n, q)
+                                    mass += q
+                                    nsum += n
+                                    normals.append(n)
+                                }
+                                mass /= Double(normals.count)
+                                var p = mass + solveQEF(ata, atb - ata * mass)
+                                let lo = cellMin - Vec3(repeating: 0.25 * h), hi = cellMin + Vec3(repeating: 1.25 * h)
+                                if any(p .< lo) || any(p .> hi) { p = mass }
+                                // Two sheets in one cell must not share a vertex position, or the welded
+                                // mesh pinches again. Their mass points are always distinct.
+                                if sheets.contains(where: { simd_distance($0.p, p) < 0.05 * h }) { p = mass }
+                                let nrm = simd_length(nsum) > 1e-9 ? simd_normalize(nsum) : lookup.gradient(p, eps: h * 0.05)
+                                // A crease cell sees surface normals pointing in clearly different directions.
+                                let crease = normals.contains { simd_dot($0, nrm) < 0.9 }
+                                sheets.append(Sheet(p: p, mass: mass, n: nrm, crease: crease))
                             }
-                            mass /= Double(normals.count)
-                            var p = mass + solveQEF(ata, atb - ata * mass)
-                            let lo = cellMin - Vec3(repeating: 0.25 * h), hi = cellMin + Vec3(repeating: 1.25 * h)
-                            if any(p .< lo) || any(p .> hi) { p = mass }
-                            let nrm = simd_length(nsum) > 1e-9 ? simd_normalize(nsum) : lookup.gradient(p, eps: h * 0.05)
-                            // A crease cell sees surface normals pointing in clearly different directions.
-                            let crease = normals.contains { simd_dot($0, nrm) < 0.9 }
-                            out.append(CellVertex(cell: i + cx * (j + cy * k), p: p, n: nrm, crease: crease))
+                            out.append(ActiveCell(cell: i + cx * (j + cy * k), edgeSheet: edgeSheet, sheets: sheets))
                         }
                     }
                     rows[j] = out
                 }
             }
         }
+        // Each active cell records its first vertex; edgeSheet picks the sheet for a cube edge.
+        var cellSlot = [Int32](repeating: -1, count: cx * cy * cz)
+        var slotFirst: [Int32] = [], slotEdgeSheet: [UInt64] = []
+        // Where planes meet at a sharp corner, neighboring cells can solve to the very same point.
+        // Two vertices in one place weld together and pinch the mesh, so a later duplicate moves
+        // to its own sheet's mass point, which lies within its cell.
+        var used = Set<SIMD3<Float>>()
         for row in rows {
-            for cv in row {
-                if cv.crease { creases.insert(mesh.positions.count) }
-                cellVertex[cv.cell] = Int32(mesh.positions.count)
-                mesh.positions.append(SIMD3<Float>(cv.p))
-                mesh.normals.append(SIMD3<Float>(cv.n))
+            for cell in row {
+                cellSlot[cell.cell] = Int32(slotFirst.count)
+                slotFirst.append(Int32(mesh.positions.count))
+                slotEdgeSheet.append(cell.edgeSheet)
+                for sheet in cell.sheets {
+                    if sheet.crease { creases.insert(mesh.positions.count) }
+                    var position = SIMD3<Float>(sheet.p)
+                    if !used.insert(position).inserted {
+                        let k = cell.cell / (cx * cy), j = (cell.cell / cx) % cy, i = cell.cell % cx
+                        let cellMin = origin + Vec3(Double(i), Double(j), Double(k)) * h
+                        position = SIMD3<Float>(simd_clamp(sheet.mass, cellMin + 0.05 * h, cellMin + 0.95 * h))
+                        used.insert(position)
+                    }
+                    mesh.positions.append(position)
+                    mesh.normals.append(SIMD3<Float>(sheet.n))
+                }
             }
         }
+        rows = []
 
         profiler.lap("dual contouring")
 
-        // 3. Faces: every grid edge that crosses the surface becomes a quad joining the 4 cells around it.
-        func cellIndex(_ i: Int, _ j: Int, _ k: Int) -> Int32 {
+        // 3. Faces: every grid edge that crosses the surface becomes a quad joining, in each of the
+        // four cells around it, the vertex of the sheet that edge belongs to.
+        func vertex(_ i: Int, _ j: Int, _ k: Int, edge: Int) -> Int32 {
             guard i >= 0, j >= 0, k >= 0, i < cx, j < cy, k < cz else { return -1 }
-            return cellVertex[i + cx * (j + cy * k)]
+            let slot = cellSlot[i + cx * (j + cy * k)]
+            guard slot >= 0 else { return -1 }
+            return slotFirst[Int(slot)] + Int32((slotEdgeSheet[Int(slot)] >> (4 * UInt64(edge))) & 0xF)
         }
-        func emitQuad(_ q: [Int32]) {
+        /// `q` lists the four vertices counterclockwise around the grid edge's positive axis
+        /// direction. The quad faces from the edge's inside end toward its outside end, which is
+        /// exact and consistent between neighbors (unlike guessing from vertex normals).
+        func emitQuad(_ q: [Int32], facesPositive: Bool) {
             guard !q.contains(-1) else { return }
             var idx = q.map { Int($0) }
-            let P = idx.map { mesh.positions[$0] }
-            let faceN = simd_cross(P[1] - P[0], P[2] - P[0]) + simd_cross(P[2] - P[0], P[3] - P[0])
-            let avgN = idx.reduce(SIMD3<Float>.zero) { $0 + mesh.normals[$1] }
-            if simd_dot(faceN, avgN) < 0 { idx.reverse() }
+            if !facesPositive { idx.reverse() }
             let Q = idx.map { mesh.positions[$0] }
             // Split along the shorter diagonal.
             if simd_distance_squared(Q[0], Q[2]) <= simd_distance_squared(Q[1], Q[3]) {
@@ -146,18 +234,27 @@ struct FusedMesher {
                 mesh.indices += [idx[0], idx[1], idx[3], idx[1], idx[2], idx[3]].map(UInt32.init)
             }
         }
+        // Cube edge numbers follow `cubeEdges`: x edges 0–3, y edges 4–7, z edges 8–11, each ordered
+        // by the cell's offset along the other two axes.
         for k in 0..<nz {
             for j in 0..<ny {
                 for i in 0..<nx {
+                    // s0: the edge's lower end is inside, so the surface faces the positive axis.
                     let s0 = field[i + nx * (j + ny * k)] < 0
                     if i + 1 < nx, s0 != (field[(i + 1) + nx * (j + ny * k)] < 0) {
-                        emitQuad([cellIndex(i, j - 1, k - 1), cellIndex(i, j, k - 1), cellIndex(i, j, k), cellIndex(i, j - 1, k)])
+                        // Around +x (y right, z up).
+                        emitQuad([vertex(i, j - 1, k - 1, edge: 3), vertex(i, j, k - 1, edge: 2),
+                                  vertex(i, j, k, edge: 0), vertex(i, j - 1, k, edge: 1)], facesPositive: s0)
                     }
                     if j + 1 < ny, s0 != (field[i + nx * ((j + 1) + ny * k)] < 0) {
-                        emitQuad([cellIndex(i - 1, j, k - 1), cellIndex(i, j, k - 1), cellIndex(i, j, k), cellIndex(i - 1, j, k)])
+                        // Around +y (z right, x up).
+                        emitQuad([vertex(i - 1, j, k - 1, edge: 7), vertex(i - 1, j, k, edge: 5),
+                                  vertex(i, j, k, edge: 4), vertex(i, j, k - 1, edge: 6)], facesPositive: s0)
                     }
                     if k + 1 < nz, s0 != (field[i + nx * (j + ny * (k + 1))] < 0) {
-                        emitQuad([cellIndex(i - 1, j - 1, k), cellIndex(i, j - 1, k), cellIndex(i, j, k), cellIndex(i - 1, j, k)])
+                        // Around +z (x right, y up).
+                        emitQuad([vertex(i - 1, j - 1, k, edge: 11), vertex(i, j - 1, k, edge: 10),
+                                  vertex(i, j, k, edge: 8), vertex(i - 1, j, k, edge: 9)], facesPositive: s0)
                     }
                 }
             }
@@ -172,8 +269,15 @@ struct FusedMesher {
         } else {
             splitCreaseNormals(&mesh, creases: creases, lookup: lookup)
         }
-        if !mesh.validation(checkAllFailures: false).isValid {
-            if denseContour.validation(checkAllFailures: false).isValid {
+        let simplifiedValid = !forceTetrahedralFallback && mesh.validation(checkAllFailures: false).isValid
+        profiler.lap("validate")
+        if Profiler.enabled && !simplifiedValid {
+            print("  simplified: \(mesh.validation().summary)\n  dense: \(denseContour.validation().summary)")
+        }
+        if !simplifiedValid {
+            let denseValid = !forceTetrahedralFallback && denseContour.validation(checkAllFailures: false).isValid
+            profiler.lap("validate dense contour")
+            if denseValid {
                 // A valid contour is preferable to changing the surface extractor when
                 // only simplification caused the failure.
                 mesh = denseContour
@@ -182,10 +286,14 @@ struct FusedMesher {
                 // Ambiguous cells can contain separate sheets. Tetrahedra resolve them
                 // consistently across the same sampled union.
                 mesh = tetrahedralSurface(field: field, nx: nx, ny: ny, nz: nz, origin: origin, lookup: lookup)
+                profiler.lap("tetrahedral surface (\(mesh.triangleCount) triangles)")
                 if tolerance > 0 {
                     let dense = mesh
                     let simplified = simplify(dense, creases: [], lookup: lookup)
-                    if simplified.validation(checkAllFailures: false).isValid { mesh = simplified } else {
+                    profiler.lap("simplify tetrahedral surface (\(simplified.triangleCount) triangles)")
+                    let valid = simplified.validation(checkAllFailures: false).isValid
+                    profiler.lap("validate")
+                    if valid { mesh = simplified } else {
                         mesh = dense
                         splitCreaseNormals(&mesh, creases: nil, lookup: lookup)
                     }
