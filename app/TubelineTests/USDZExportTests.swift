@@ -36,7 +36,7 @@ final class USDZExportTests: XCTestCase {
         try Data(##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="#000" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>"##.utf8).write(to: svg)
         let out = dir.appendingPathComponent("plus.usdz")
 
-        let report = try Converter.convert(svg: svg, to: out, options: ConversionOptions())
+        let report = try Converter.convert(svg: svg, to: out, options: ConversionOptions.trueSize)
         XCTAssertGreaterThan(report.triangles, 0)
 
         let zip = try Data(contentsOf: out)
@@ -120,7 +120,7 @@ final class USDZExportTests: XCTestCase {
         // An asymmetric L catches rotations, mirroring, and an unflipped SVG Y axis.
         try Data("<svg viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'><path d='M4 4v16h10'/></svg>".utf8).write(to: source)
         let document = try SVGParser.parse(url: source, tolerance: 0.005)
-        let mesh = try Converter.buildMesh(document, options: ConversionOptions())
+        let mesh = try Converter.buildMesh(document, options: ConversionOptions.trueSize)
         let pointsToCentimeters = 2.54 / 72
         XCTAssertEqual(mesh.bounds.min.x, -9 * pointsToCentimeters, accuracy: 0.002)
         XCTAssertEqual(mesh.bounds.max.x, 3 * pointsToCentimeters, accuracy: 0.002)
@@ -204,7 +204,7 @@ final class USDZExportTests: XCTestCase {
 final class GLBExportTests: XCTestCase {
     private func glb(surface: ConversionOptions.Surface) throws -> (json: [String: Any], bin: Data, mesh: Mesh) {
         let svg = ##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>"##
-        let mesh = try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: ConversionOptions())
+        let mesh = try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: ConversionOptions.trueSize)
         let data = GLBWriter.make(mesh: mesh, name: "plus", color: SIMD3(1, 0.5, 0), surface: surface)
         func u32(_ at: Int) -> UInt32 { data.subdata(in: at..<at + 4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) } }
         XCTAssertEqual(u32(0), 0x4654_6C67, "glTF magic")
@@ -256,7 +256,7 @@ final class GLBExportTests: XCTestCase {
         let svg = dir.appendingPathComponent("icon.svg")
         try Data(##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="#000" stroke-width="2" fill="none"><path d="M4 12h16"/></svg>"##.utf8).write(to: svg)
         let outputs = [dir.appendingPathComponent("icon.usdz"), dir.appendingPathComponent("icon.glb")]
-        try Converter.convert(svg: svg, to: outputs, options: ConversionOptions())
+        try Converter.convert(svg: svg, to: outputs, options: ConversionOptions.trueSize)
         let usdz = try Data(contentsOf: outputs[0]), glb = try Data(contentsOf: outputs[1])
         XCTAssertEqual(usdz.prefix(4), Data([0x50, 0x4B, 0x03, 0x04]), "USDZ is a zip package")
         XCTAssertEqual(glb.prefix(4), Data("glTF".utf8))

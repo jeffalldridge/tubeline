@@ -58,8 +58,10 @@ public struct ConversionOptions: Codable, Equatable, Sendable {
     public var millimetersPerPoint = 25.4 / 72
     /// Length of the longest side of the frame in centimeters, for `.fixed` sizing.
     public var size = 10.0
-    /// Integer multiplier applied after sizing, useful when a destination normalizes imports.
-    public var outputScale = 1
+    /// Integer multiplier applied after sizing, for both USDZ and GLB. The default is 10×: at true
+    /// print size (1×) icons import into After Effects far too small, and Motion's default
+    /// Automatic size normalizes imports regardless, so 10× works well in both.
+    public var outputScale = 10
     /// Simplify the mesh: long straight runs and flat faces collapse to a few large triangles,
     /// keeping the surface within one facet's sag of the exact shape.
     public var optimize = true

@@ -3,7 +3,7 @@ import simd
 @testable import TubelineCore
 
 final class MeshingTests: XCTestCase {
-    private func mesh(_ body: String, options: ConversionOptions = ConversionOptions()) throws -> Mesh {
+    private func mesh(_ body: String, options: ConversionOptions = ConversionOptions.trueSize) throws -> Mesh {
         let svg = ##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round">\##(body)</svg>"##
         return try Converter.buildMesh(SVGParser.parse(data: Data(svg.utf8)), options: options)
     }
@@ -14,7 +14,7 @@ final class MeshingTests: XCTestCase {
     }
 
     func testDefaultFillExtrudesLikeExplicitFillWithoutAnOutline() throws {
-        var options = ConversionOptions()
+        var options = ConversionOptions.trueSize
         options.extrudeDepth = 2
         options.extrudeRounding = 0
         options.thickness = 3
@@ -41,7 +41,7 @@ final class MeshingTests: XCTestCase {
     }
 
     func testFilletedAndFilledShapesAreWatertight() throws {
-        var o = ConversionOptions()
+        var o = ConversionOptions.trueSize
         o.fillet = 0.5
         assertWatertight(try mesh(##"<path d="M4 12h16M12 4v16"/><circle cx="12" cy="12" r="4" fill="#000"/>"##, options: o))
     }
@@ -55,7 +55,7 @@ final class MeshingTests: XCTestCase {
     }
 
     func testFlatCapsEndAtTheEndpoint() throws {
-        var o = ConversionOptions()
+        var o = ConversionOptions.trueSize
         o.sizing = .fixed
         o.size = 24
         let round = try mesh(##"<path d="M2 12h20"/>"##, options: o).bounds.size.x
@@ -66,7 +66,7 @@ final class MeshingTests: XCTestCase {
     }
 
     func testFacetsControlDensity() throws {
-        var o = ConversionOptions()
+        var o = ConversionOptions.trueSize
         o.facets = 16
         let coarse = try mesh(##"<circle cx="12" cy="12" r="8"/>"##, options: o).triangleCount
         o.facets = 64
@@ -76,7 +76,7 @@ final class MeshingTests: XCTestCase {
 
     func testOptimizationIsLighterWatertightAndOnTheSurface() throws {
         let body = ##"<path d="M4 4 20 20"/><path d="M20 4 4 20"/><circle cx="12" cy="12" r="8"/>"##
-        var o = ConversionOptions()
+        var o = ConversionOptions.trueSize
         o.optimize = false
         let dense = try mesh(body, options: o)
         o.optimize = true
@@ -102,11 +102,44 @@ final class MeshingTests: XCTestCase {
         }
     }
 
+    private let tee = "<path d='M4 8h16'/><path d='M12 8v12'/>"
+
+    func testBlendedTeeStaysFlatOnTopAndFilletsUnderneath() throws {
+        let pt = 2.54 / 72
+        var options = ConversionOptions.trueSize
+        options.fillet = 1
+        let blended = try mesh(tee, options: options)
+        assertWatertight(blended)
+        // The bar's centerline is 4 pt above the canvas center and its tube radius is 1 pt, so its
+        // top is at 5 pt. The upright's rounded end inside the bar must not raise a bump there.
+        XCTAssertEqual(blended.bounds.max.y, 5 * pt, accuracy: 0.02 * pt)
+        // Its depth stays one stroke width: no bulge toward the viewer at the joint.
+        XCTAssertEqual(blended.bounds.size.z, 2 * pt, accuracy: 0.02 * pt)
+        // Underneath, the inside corners get material that a crisp union leaves empty.
+        func cornerVertices(_ m: Mesh) -> Int {
+            m.positions.filter { p in
+                let x = abs(Double(p.x)) / pt, y = Double(p.y) / pt
+                return x > 1.1 && x < 1.5 && y > 2.5 && y < 2.9 && abs(Double(p.z)) / pt < 0.5
+            }.count
+        }
+        options.fillet = 0
+        XCTAssertEqual(cornerVertices(try mesh(tee, options: options)), 0)
+        XCTAssertGreaterThan(cornerVertices(blended), 0)
+    }
+
+    func testFullBlendAtABusyCrossingIsValidWithoutFallback() throws {
+        var options = ConversionOptions.trueSize
+        options.fillet = 1
+        let m = try mesh("<path d='M5 5 19 19M19 5 5 19'/><path d='M4 12h16'/><circle cx='12' cy='12' r='7'/>", options: options)
+        assertWatertight(m)
+        XCTAssertFalse(m.warnings.contains { $0.contains("denser mesh") })
+    }
+
     func testEmptyDocumentThrows() {
         XCTAssertThrowsError(try mesh(##"<path d="M0 0h24" stroke="none"/>"##))
     }
     func testFlatCapsDoNotChangeWhenStraightSegmentsAreSubdivided() throws {
-        var options = ConversionOptions()
+        var options = ConversionOptions.trueSize
         options.caps = .flat
         options.optimize = false
         let plain = try mesh("<path d='M4 12h16'/>", options: options)
@@ -118,7 +151,7 @@ final class MeshingTests: XCTestCase {
 
     func testChangingPhysicalScalePreservesTopology() throws {
         let body = "<path d='M4 4 20 20'/><path d='M20 4 4 20'/>"
-        var options = ConversionOptions()
+        var options = ConversionOptions.trueSize
         let small = try mesh(body, options: options)
         options.sizing = .fixed
         options.size = 24
@@ -145,7 +178,7 @@ final class MeshingTests: XCTestCase {
 
     func testPhysicalSizingUsesCSSPixels() throws {
         let document = try SVGParser.parse(data: Data("<svg viewBox='0 0 96 96' width='1in' height='1in' stroke='black' stroke-width='2'><path d='M0 48h96'/></svg>".utf8))
-        var options = ConversionOptions()
+        var options = ConversionOptions.trueSize
         options.sizing = .physical
         let m = try Converter.buildMesh(document, options: options)
         XCTAssertEqual(m.bounds.size.x, 2.54, accuracy: 0.003)
@@ -154,8 +187,8 @@ final class MeshingTests: XCTestCase {
     func testInvalidDocumentCoordinatesThrowBeforeSampling() throws {
         var document = try SVGParser.parse(data: Data("<svg stroke='black'><path d='M0 0h10'/></svg>".utf8))
         document.canvas = (.zero, [Double.infinity, 24])
-        XCTAssertThrowsError(try Converter.buildMesh(document, options: ConversionOptions()))
-        var options = ConversionOptions()
+        XCTAssertThrowsError(try Converter.buildMesh(document, options: ConversionOptions.trueSize))
+        var options = ConversionOptions.trueSize
         options.thickness = .nan
         XCTAssertThrowsError(try mesh("<path d='M0 0h10'/>", options: options))
     }
@@ -163,7 +196,7 @@ final class MeshingTests: XCTestCase {
     func testIntegerOutputScalePreservesTopology() throws {
         let body = "<path d='M4 4 20 20'/><path d='M20 4 4 20'/>"
         let original = try mesh(body)
-        var options = ConversionOptions()
+        var options = ConversionOptions.trueSize
         options.outputScale = 100
         let enlarged = try mesh(body, options: options)
         XCTAssertEqual(original.indices, enlarged.indices)
@@ -175,9 +208,10 @@ final class MeshingTests: XCTestCase {
         let options = try JSONDecoder().decode(ConversionOptions.self, from: Data("{\"thickness\":2,\"facets\":16}".utf8))
         XCTAssertEqual(options.thickness, 2)
         XCTAssertEqual(options.facets, 16)
-        XCTAssertEqual(options.outputScale, 1)
+        XCTAssertEqual(options.outputScale, 10, "A missing Output Scale takes the current default")
         XCTAssertEqual(options.sizing, .points)
         XCTAssertEqual(try JSONDecoder().decode(ConversionOptions.self, from: JSONEncoder().encode(options)), options)
+        XCTAssertEqual(ConversionOptions().outputScale, 10, "USDZ and GLB default to 10× so icons import at a workable size")
     }
 
     private func crossingX(cm: Double) -> [PrimitiveGroup] {

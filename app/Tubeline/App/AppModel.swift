@@ -33,6 +33,7 @@ final class AppModel {
             do {
                 let data = try JSONEncoder().encode(newValue)
                 defaults.set(data, forKey: "defaultOptions")
+                defaults.set(Self.optionsVersion, forKey: "optionsVersion")
                 storedStartupOptions = newValue
                 startupOptionsError = nil
             } catch {
@@ -103,13 +104,29 @@ final class AppModel {
         var rejectedSavedValue = false
         for key in ["defaultOptions", "options"] {
             guard let data = defaults.data(forKey: key) else { continue }
-            if let decoded = try? JSONDecoder().decode(ConversionOptions.self, from: data),
+            if var decoded = try? JSONDecoder().decode(ConversionOptions.self, from: data),
                ConversionOptionValidation.problem(in: decoded) == nil {
+                migrate(&decoded, key: key, in: defaults)
                 return (decoded, rejectedSavedValue ? "Some saved defaults were invalid. Valid settings are active; stored preferences were kept." : nil)
             }
             rejectedSavedValue = true
         }
         return (ConversionOptions(), rejectedSavedValue ? "Saved defaults were invalid. Built-in settings are active; stored preferences were kept." : nil)
+    }
+
+    /// Version 2 (Tubeline 0.3.1) changed the default Output Scale from 1× to 10×, because
+    /// true print size imports into After Effects far too small. Defaults saved by earlier
+    /// versions at 1× move to the new default once; any other saved scale is the user's choice
+    /// and stays.
+    static let optionsVersion = 2
+
+    private static func migrate(_ options: inout ConversionOptions, key: String, in defaults: UserDefaults) {
+        guard defaults.integer(forKey: "optionsVersion") < optionsVersion else { return }
+        if options.outputScale == 1 {
+            options.outputScale = ConversionOptions().outputScale
+            if let data = try? JSONEncoder().encode(options) { defaults.set(data, forKey: key) }
+        }
+        defaults.set(optionsVersion, forKey: "optionsVersion")
     }
 
     private func savePreferences() {

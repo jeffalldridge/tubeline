@@ -135,7 +135,7 @@ struct SettingsPanel: View {
 
     private var sizeExplanation: String {
         switch model.editingOptions.sizing {
-        case .points: "Uses artwork points at 1/72 inch by default. Motion’s Automatic size fits imported objects to its canvas."
+        case .points: "Uses artwork points at 1/72 inch, then Output Scale (10× by default, the same for USDZ and GLB) for a workable import size. Choose 1× for true print size."
         case .physical: "Uses the SVG’s declared dimensions. CSS pixels and print points have different physical sizes."
         case .fixed: "Sets the frame’s longest side. Motion’s Automatic size may normalize the imported model."
         }

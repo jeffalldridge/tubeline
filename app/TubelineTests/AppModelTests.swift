@@ -58,11 +58,11 @@ final class AppModelTests: XCTestCase {
         model.selection = job.id
         model.editingScope = .selected
         model.editingOptions.thickness = 2
-        model.editingOptions.outputScale = 10
+        model.editingOptions.outputScale = 25
         model.options.outputScale = 100
         model.options.facets = 48
         XCTAssertEqual(model.effectiveOptions(for: job).thickness, 2)
-        XCTAssertEqual(model.effectiveOptions(for: job).outputScale, 10)
+        XCTAssertEqual(model.effectiveOptions(for: job).outputScale, 25)
         XCTAssertEqual(model.effectiveOptions(for: job).facets, 48)
         XCTAssertNil(job.overrides.facets)
         model.editingOptions.thickness = model.options.thickness
@@ -159,6 +159,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(AppModel(defaults: defaults, worker: worker).exportFormat, .both)
         model.exportFormat = .glb
         guard case .outdated = job.status else { return XCTFail("A different format needs a new export") }
+    }
+
+    func testDefaultsSavedAtTrueSizeMoveToTheNewScaleOnce() throws {
+        let defaults = makeDefaults()
+        var old = ConversionOptions()
+        old.outputScale = 1
+        old.thickness = 2
+        defaults.set(try JSONEncoder().encode(old), forKey: "defaultOptions")
+        let model = AppModel(defaults: defaults, worker: ConversionQueue())
+        XCTAssertEqual(model.options.outputScale, 10)
+        XCTAssertEqual(model.options.thickness, 2, "Other saved settings are kept")
+        // After migrating, a deliberate 1× choice is respected.
+        model.startupOptions.outputScale = 1
+        XCTAssertEqual(AppModel(defaults: defaults, worker: ConversionQueue()).options.outputScale, 1)
+
+        let custom = makeDefaults()
+        var hundred = ConversionOptions()
+        hundred.outputScale = 100
+        custom.set(try JSONEncoder().encode(hundred), forKey: "defaultOptions")
+        XCTAssertEqual(AppModel(defaults: custom, worker: ConversionQueue()).options.outputScale, 100)
     }
 
     func testCancelDoesNotPublishRunningConversionOrStartQueuedJobs() async throws {
