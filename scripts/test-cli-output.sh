@@ -49,7 +49,21 @@ run "$WORK/b/icon.svg" -o "$WORK/existing" --replace
 if cmp -s "$WORK/original.usdz" "$WORK/existing/icon.usdz"; then fail "--replace did not replace the requested file"; fi
 [[ $(count_models "$WORK/existing") == 2 ]] || fail "--replace unexpectedly added another file"
 
+# Both formats share one name; if either name is taken, both move together.
+mkdir -p "$WORK/both"
+echo existing > "$WORK/both/icon.glb"
+run "$WORK/a/icon.svg" -o "$WORK/both" --format both
+[[ -f "$WORK/both/icon 2.usdz" && -f "$WORK/both/icon 2.glb" ]] || fail "--format both didn't keep an icon's files together"
+[[ ! -e "$WORK/both/icon.usdz" ]] || fail "--format both split an icon's files across names"
+[[ $(cat "$WORK/both/icon.glb") == existing ]] || fail "--format both replaced an existing GLB"
+[[ $(head -c 4 "$WORK/both/icon 2.glb") == glTF ]] || fail "the GLB export isn't a glTF binary"
+
+# A GLB-only export can still render a preview image.
+run "$WORK/a/icon.svg" -o "$WORK/glb-preview" --format glb --png-size 128
+[[ -f "$WORK/glb-preview/icon.glb" && -f "$WORK/glb-preview/icon.png" && ! -e "$WORK/glb-preview/icon.usdz" ]] \
+    || fail "--format glb with a preview wrote the wrong files"
+
 if [[ -n $(find "$WORK" -type d -name '.Tubeline-*' -print -quit) ]]; then
     fail "a completed conversion left its staging directory behind"
 fi
-echo "CLI output checks passed: concurrent exports, batch names, keep both, and explicit replacement."
+echo "CLI output checks passed: concurrent exports, batch names, keep both, explicit replacement, and GLB formats."

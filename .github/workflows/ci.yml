@@ -32,10 +32,14 @@ jobs:
       - name: Engine tests
         run: swift test
 
-      - name: Convert samples and validate USDZ
+      - name: Convert samples and validate USDZ and GLB
         run: |
-          .build/release/tubeline Samples -o "$RUNNER_TEMP/out"
+          .build/release/tubeline Samples -o "$RUNNER_TEMP/out" --format both
           for f in "$RUNNER_TEMP"/out/*.usdz; do usdchecker --arkit "$f"; done
+          # The script resolves gltf-validator from its own folder, so it runs from there.
+          npm install --no-save --prefix "$RUNNER_TEMP/validator" gltf-validator@2.0.0-dev.3.10
+          cp scripts/validate-glb.mjs "$RUNNER_TEMP/validator/"
+          node "$RUNNER_TEMP/validator/validate-glb.mjs" "$RUNNER_TEMP"/out/*.glb
 
       - name: App tests
         run: |
