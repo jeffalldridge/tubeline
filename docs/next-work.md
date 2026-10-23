@@ -2,7 +2,7 @@
 
 ## Agent Handoff Snapshot
 
-The development branch `codex/mesh-optimization` ([pull request #8](https://github.com/jeffalldridge/tubeline/pull/8)) now also carries per-sheet contouring and GLB export. It is being merged into `main` for the 0.3.0 release; the published 0.2.0 download and its tag are unchanged.
+The development branch `codex/mesh-optimization` ([pull request #8](https://github.com/jeffalldridge/tubeline/pull/8)) now also carries per-sheet contouring and GLB export. It was merged into `main` and released as 0.3.0; the 0.2.0 tag is unchanged.
 
 **Per-sheet contouring (commit `c7864cf`).** Dual contouring now gives each separate sheet of surface in a cell its own vertex, grouping a cell's crossing edges per cube face with the asymptotic decider so neighboring cells always agree. Quads face from each grid edge's inside end toward its outside end instead of guessing from normals, and vertices that solve to the same sharp corner are separated. On the 162-icon corpus the dense tetrahedral fallback dropped from 42 icons to 2 (`54a ai-agent-visibility` and `211a deployment-gpu`, each with a single tunnel-like cell where both neighbors join two sheets), total conversion time dropped from 408 s to 186 s, and the slowest icon from 29.0 s to 6.2 s. Former fallback icons now average about 58,000 triangles instead of 147,000. Icons that never needed the fallback changed by at most 0.85 percent in triangle count, from the exact quad orientation. Every mesh still passes strict validation.
 
@@ -14,20 +14,18 @@ The development branch `codex/mesh-optimization` ([pull request #8](https://gith
 
 ## Shareable Build
 
-[Download Tubeline 0.2.0](https://github.com/jeffalldridge/tubeline/releases/download/v0.2.0/Tubeline-0.2.0.dmg). Open the DMG and drag Tubeline to Applications. Requires Apple silicon and macOS 14 or later.
+[Download Tubeline 0.3.0](https://github.com/jeffalldridge/tubeline/releases/download/v0.3.0/Tubeline-0.3.0.dmg). Open the DMG and drag Tubeline to Applications. Requires Apple silicon and macOS 14 or later.
 
-The release tag `v0.2.0` points to `0fba5693dbb8a344e4b53224b7a53be262e8a060`. [GitHub CI run 39860251368](https://github.com/jeffalldridge/tubeline/actions/runs/39860251368) passed on that exact commit: engine and CLI compilation, engine tests, six original sample conversions with `usdchecker --arkit`, and app build/tests.
-
-The release script ran fifty-six app tests successfully. App and DMG passed Developer ID signature checks, notarization, stapling, and Gatekeeper assessment. The CLI was signed, smoke-tested, and notarized. Shipped app metadata includes the copyright, graphics-design category, encryption declaration, and privacy reasons for UserDefaults and user-selected file timestamps. The release Mac uses the existing `syntaxlook-notary` profile through `TUBELINE_NOTARY_PROFILE`.
+The tag `v0.3.0` points to the release commit on `main`, after pull request #8 merged and CI passed on the merge commit. The release script ran the full test suites; the app, DMG, and CLI were each accepted by Apple's notary service; and the app and DMG are stapled. A fresh download from GitHub matched its checksums, Gatekeeper accepted the DMG and the app inside it (version 0.3.0, build 3, arm64), and the shipped CLI converted all six samples to USDZ and GLB, which passed `usdchecker --arkit` and the Khronos glTF Validator. Notarization used the existing `syntaxlook-notary` keychain profile.
 
 Published SHA-256 digests:
 
 ```text
-ca0ec785ded24c9b1d1191820bd50fcbb829b18c6dde5b4e1108a0b0d2eb9b1c  Tubeline-0.2.0.dmg
-3ddbd9a2ed5da008a37d4a81533d1e84eca1eec08b465f03e49021a21357675a  tubeline-cli-0.2.0.zip
+f465e08d1a8ee509a27cb57ee6b385609fadf2495dfa5b2ae259385f404b4c60  Tubeline-0.3.0.dmg
+783dd241a47bde2b8a9e199011494e96d1f47447fca34c0777f9078db69a8f7a  tubeline-cli-0.3.0.zip
 ```
 
-The signed Release app launched, previewed an original heart SVG, exported it, and responded to Front. The shipped CLI converted all six original samples, and each output passed `usdchecker --arkit`.
+Version 0.2.0 remains available under its own tag.
 
 ## What to Demonstrate
 
