@@ -145,9 +145,9 @@ cat >> "$NOTES" <<EOF
 
 ---
 
-**Install:** open \`$APP_NAME-$VERSION.dmg\` and drag Tubeline to Applications. Requires an Apple silicon Mac with macOS 14 or later. The app and the command-line tool are signed by Tent Studios, LLC and notarized by Apple.
+**Install:** Open \`$APP_NAME-$VERSION.dmg\` and drag Tubeline to your Applications folder. You need an Apple silicon Mac with macOS 14 or later. The app and the command-line tool are signed by Tent Studios, LLC, and notarized by Apple.
 
-**Command line:** unzip \`tubeline-cli-$VERSION.zip\` and run \`./tubeline --help\`.
+**Command line:** Unzip \`tubeline-cli-$VERSION.zip\` and run \`./tubeline --help\`. Add \`--format glb\` or \`--format both\` for GLB files.
 EOF
 
 echo "==> artifacts in $OUT: $(basename "$DMG"), $(basename "$CLI_ZIP"), SHA256SUMS.txt"

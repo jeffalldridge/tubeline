@@ -4,6 +4,8 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
 ### Added
 
 - GLB (binary glTF 2.0) export for After Effects, Cinema 4D, Blender, and web tools. Choose USDZ, GLB, or both from the Format menu in the export bar, or pass `--format usdz|glb|both` to the CLI. USDZ remains the default. GLB models use meters with Y up, and Solid Color uses an unlit material so it stays flat. Both files are written from the same mesh and share one name.
@@ -79,6 +81,7 @@ The first public release.
 - The `tubeline` command-line tool for batch conversion, with optional PNG previews.
 - Exported files contain one mesh and one material in binary USD, measured in centimeters with Y up, and pass Apple's `usdchecker --arkit`.
 
-[Unreleased]: https://github.com/jeffalldridge/tubeline/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jeffalldridge/tubeline/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jeffalldridge/tubeline/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jeffalldridge/tubeline/releases/tag/v0.2.0
 [0.1.0]: https://github.com/jeffalldridge/tubeline/releases/tag/v0.1.0

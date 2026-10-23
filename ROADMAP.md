@@ -2,7 +2,7 @@
 
 This is where Tubeline is headed. It's a plan, not a promise, and priorities will shift as people use the app. Each item links to a GitHub issue, where you can follow progress, add a 👍, or describe how you'd use it.
 
-*Last updated October 22, 2026 (version 0.2.0; 0.3 in progress)*
+*Last updated October 22, 2026 (version 0.3.0)*
 
 ## Principles
 
@@ -11,9 +11,12 @@ This is where Tubeline is headed. It's a plan, not a promise, and priorities wil
 - Every icon becomes one closed solid, light enough to animate dozens at a time.
 - The app uses Apple's frameworks, avoids third-party dependencies, and never connects to the network or collects data. It runs on Apple silicon Macs with macOS 14 or later.
 
+## Recently Shipped
+
+- [GLB (glTF 2.0) export for After Effects and other apps](https://github.com/jeffalldridge/tubeline/issues/2) in version 0.3.0. USDZ stays the default, and you can choose GLB or both. Solid Color uses an unlit material so it stays flat in GLB too.
+
 ## Now (Version 0.3)
 
-- [Export GLB (glTF 2.0) for After Effects and other apps](https://github.com/jeffalldridge/tubeline/issues/2). Ready for release: USDZ stays the default, and you can choose GLB or both. Solid Color uses an unlit material so it stays flat in GLB too.
 - [Test the output in motion graphics apps, starting with Apple Motion](https://github.com/jeffalldridge/tubeline/issues/3): check size, materials, and performance in real projects, including After Effects with GLB. Feedback is welcome.
 - Fix problems found with real-world icons. If one converts badly, please [report it](https://github.com/jeffalldridge/tubeline/issues/new?template=bad-conversion.yml).
 

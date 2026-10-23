@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 import TubelineCore
 
-let version = "0.2.0"
+let version = "0.3.0"
 
 let usage = """
 Usage: tubeline [options] <file.svg | folder> ...
