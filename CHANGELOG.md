@@ -4,6 +4,17 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-23
+
+### Changed
+
+- The default Output Scale is now 10× for both USDZ and GLB, so icons import at a workable size: at true print size they arrived in After Effects about one-tenth of what was needed. Motion's default Automatic size still normalizes USDZ imports. Saved defaults from earlier versions that used 1× move to 10× once; any other saved scale is kept. Choose 1× for true print size.
+
+### Fixed
+
+- Intersection blending (Soft and Round) no longer raises a bump where one stroke only touches another from inside, such as the top of a T, or bulges the front of a crossing. Fillets now form only where surfaces actually meet at an angle, like the underside of a T, and narrow smoothly where the surfaces become tangent.
+- Blended meshes no longer show small shards or specks near fillets, and full blends at busy crossings no longer leave pinholes or need the denser fallback mesh.
+
 ## [0.3.0] - 2026-10-22
 
 ### Added
@@ -81,7 +92,8 @@ The first public release.
 - The `tubeline` command-line tool for batch conversion, with optional PNG previews.
 - Exported files contain one mesh and one material in binary USD, measured in centimeters with Y up, and pass Apple's `usdchecker --arkit`.
 
-[Unreleased]: https://github.com/jeffalldridge/tubeline/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jeffalldridge/tubeline/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/jeffalldridge/tubeline/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/jeffalldridge/tubeline/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jeffalldridge/tubeline/releases/tag/v0.2.0
 [0.1.0]: https://github.com/jeffalldridge/tubeline/releases/tag/v0.1.0

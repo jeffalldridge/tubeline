@@ -43,12 +43,12 @@ Clipping, masks, filters, nested SVG viewports, and non-scaling strokes are unsu
 - **Mesh Detail:** the target curve detail (default 32), pinned above the scrolling settings. The slider spans 6–64, with Draft (6), Low (16), Balanced (32), and High (64) presets to compare triangle counts. This controls meshing density, rather than an exact count of polygon sides. Higher values make heavier meshes.
 - **Optimize Mesh:** simplifies the model (on by default). Turn it off to keep the dense mesh.
 - **Ends:** the SVG's own line caps, or always round or always flat.
-- **Intersections:** Crisp, Soft, or Round, with a slider to fine-tune the blend.
+- **Intersections:** Crisp, Soft, or Round, with a slider to fine-tune the blend. Blends round the inside corners where strokes actually meet, such as the underside of a T, and leave surfaces that only touch, such as the top of the T or the front of a crossing, as they are.
 - **Filled Shapes:** include or ignore fills, and set the extrusion depth (in points) and edge rounding for shapes that have no outline.
 - **Surface:** Solid Color, a flat color that ignores scene lighting, or Shaded, a matte finish that responds to lights. Either can be any color.
 - **Scale:** Artwork Points (the default) treats artwork coordinates as design points, with one point equal to 1/72 inch (0.3528 mm). SVG Physical Size honors declared SVG dimensions and the standard ninety-six CSS pixels per inch. Fit Size scales the frame's longest side to a length in centimeters.
 - **Frame:** center the model on the SVG canvas, which keeps a set of icons aligned, or on the artwork itself.
-- **Output Scale:** a whole-number multiplier applied after sizing, with 1×, 10×, and 100× presets. This makes small icons practical in 3D apps that use larger working dimensions. It can follow the batch or be customized for one icon.
+- **Output Scale:** a whole-number multiplier applied after sizing, with 1×, 10×, and 100× presets. The default is 10×, which imports at a workable size in both After Effects (GLB) and Motion (USDZ); 1× is true print size. USDZ and GLB always come out the same size. It can follow the batch or be customized for one icon.
 
 - **Format** (in the output bar): USDZ (the default) for Apple Motion and other Apple apps, GLB for After Effects, Cinema 4D, Blender, and web tools, or both. Both formats come from the same mesh, and an icon's files share one name.
 
@@ -58,9 +58,9 @@ App Settings lets you set default Detail, mesh optimization, thickness, and outp
 
 ### Sizing in Motion
 
-SVG user coordinates, CSS pixels, and print points are distinct. Physical SVG sizing follows `72 pt = 96 px = 1 in`, including the viewport-to-viewBox scale. Artwork Points preserves Tubeline's design-point convention for icon work. For example, a 48 pt canvas side becomes approximately 1.693 cm at the default conversion.
+SVG user coordinates, CSS pixels, and print points are distinct. Physical SVG sizing follows `72 pt = 96 px = 1 in`, including the viewport-to-viewBox scale. Artwork Points preserves Tubeline's design-point convention for icon work. For example, a 48 pt canvas side becomes approximately 1.693 cm at true size (1×), or 16.93 cm at the default 10× Output Scale.
 
-For a larger working size, choose Output Scale 100×. A 24 pt canvas side then becomes approximately 84.67 cm, and a 48 pt canvas side becomes approximately 169.33 cm. The preview reports the final geometry dimensions, which may be smaller than the canvas frame. Output Scale changes the dimensions without increasing the triangle count.
+For an even larger working size, choose Output Scale 100×. A 24 pt canvas side then becomes approximately 84.67 cm, and a 48 pt canvas side becomes approximately 169.33 cm. The preview reports the final geometry dimensions, which may be smaller than the canvas frame. Output Scale changes the dimensions without increasing the triangle count.
 
 Motion's Automatic Unit Size normalizes imported objects to approximately 500 project pixels. Original uses a one-to-one units-to-pixels translation, and Custom lets you choose the inherent size. Physical USDZ dimensions alone do not specify a screen size in Motion. See [Apple's sizing controls](https://support.apple.com/guide/motion/modify-a-3d-objects-inherent-size-orientation-motn0e41f019/mac) and the [SVG coordinate specification](https://www.w3.org/TR/SVG2/coords.html).
 

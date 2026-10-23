@@ -2,6 +2,14 @@
 
 Architectural and product decisions, with the reasoning behind them. Newest first.
 
+## October 23, 2026: Default Output Scale Is 10×, the Same for USDZ and GLB (Jeff)
+
+GLB imported into After Effects far too small at true print size; Jeff had to scale it 1,000 percent. A GLB-only scale was tried and rejected: Jeff wants both formats sized identically. The default Output Scale is now 10× for both; Motion's Automatic size normalizes USDZ anyway. Saved defaults from before version 2 of the options at 1× migrate to 10× once; other saved values stay. Adobe documents no unit mapping for GLB; community reports suggest about 512 px per meter.
+
+## October 23, 2026: Blend Only Where Surfaces Meet at an Angle (Jeff's T Report)
+
+A plain smooth union inflated places where one stroke merely touches another from inside (a bump on top of a T) or where tubes are tangent (the front of a crossing). Blending now scales each pair's fillet by the angle between their surfaces: none within about 26 degrees of parallel, full past about 96. Rejected: an "exposed surface" test, which collapsed the fillet near the joint. Fading the fillet abruptly caused dimples, so the fade is gradual and uses whole-stroke directions. Blended meshes skip crease splitting (it misread tight fillets as creases and made shards), and contouring checks every cell corner because blended fields aren't 1-Lipschitz.
+
 ## October 22, 2026: Share 0.2.0 Before Further Optimization (Jeff)
 
 Ship the reviewed workflow, camera, sizing, and geometry safeguards as 0.2.0 so Jeff can demonstrate it to a colleague. GLB remains next without a promised version. Continue optimization after the release tag. Output Scale is an integer multiplier; physical units and topology stay independent. Preview projection belongs to the preview, while the exported model faces +Z at zero rotation.

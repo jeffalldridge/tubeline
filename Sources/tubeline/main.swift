@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 import TubelineCore
 
-let version = "0.3.0"
+let version = "0.3.1"
 
 let usage = """
 Usage: tubeline [options] <file.svg | folder> ...
@@ -35,7 +35,7 @@ Size:
   --pt <mm>                 Size of one artwork point (default 0.3528, which is 1/72 inch)
   --physical                Honor SVG dimensions and standard SVG pixel units
   --size <cm>               Instead, fit the longest frame side in centimeters before output scale
-  --scale <integer>         Multiply exported dimensions, 1 to 10000 (default 1; e.g., 100)
+  --scale <integer>         Multiply exported dimensions, 1 to 10000 (default 10; 1 is true print size)
   --framing <canvas|content>
                             Center on the SVG canvas or on the artwork (default canvas)
 
