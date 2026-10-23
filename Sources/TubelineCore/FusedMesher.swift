@@ -129,8 +129,9 @@ struct FusedMesher {
                     normals.reserveCapacity(12)
                     for k in 0..<cz {
                         for i in 0..<cx {
-                            // A distance field can't change sign within a cell when a corner is farther than the cell diagonal.
-                            if abs(field[i + nx * (j + ny * k)]) > Float(1.8 * h) { continue }
+                            // Check every corner's sign. (Skipping cells whose first corner is far from
+                            // the surface is only safe for a true distance field; blended fields can
+                            // change faster than that and would leave pinholes.)
                             var mask = 0
                             for c in 0..<8 {
                                 let o = corners[c]
@@ -344,8 +345,10 @@ struct FusedMesher {
         for k in 0..<(nz - 1) {
             for j in 0..<(ny - 1) {
                 for i in 0..<(nx - 1) {
-                    let base = i + nx * (j + ny * k)
-                    if abs(Double(field[base]) - iso) > 1.8 * voxel { continue }
+                    // Every corner's sign, checked without allocating; see the note in contouring.
+                    var below = 0
+                    for c in corners where Double(field[(i + c.x) + nx * ((j + c.y) + ny * (k + c.z))]) - iso < 0 { below += 1 }
+                    if below == 0 || below == 8 { continue }
                     let grid = corners.map { (i + $0.x) + nx * ((j + $0.y) + ny * (k + $0.z)) }
                     let values = grid.map { Double(field[$0]) - iso }
                     if values.allSatisfy({ $0 < 0 }) || values.allSatisfy({ $0 >= 0 }) { continue }
@@ -405,9 +408,13 @@ struct FusedMesher {
 
         var mesh = Mesh()
         mesh.positions = pos.map { SIMD3<Float>($0) }
-        mesh.normals = pos.map { SIMD3<Float>(lookup.gradient($0, eps: voxel * 0.02)) }
+        // A quarter-cell step averages rapid curvature changes (where fillets fade out) the way the
+        // dense contour does, instead of turning them into bright specks.
+        mesh.normals = pos.map { SIMD3<Float>(lookup.gradient($0, eps: voxel * 0.25)) }
         mesh.indices = out.flatMap { [UInt32($0.x), UInt32($0.y), UInt32($0.z)] }
-        splitCreaseNormals(&mesh, creases: nil, lookup: lookup)
+        // Blended surfaces are meant to be soft, and their tight curvature where fillets fade out
+        // would be misread as creases and split into hard shards. Only crisp unions split.
+        if blend == 0 { splitCreaseNormals(&mesh, creases: nil, lookup: lookup) }
         return mesh
     }
 
@@ -502,10 +509,12 @@ struct FusedMesher {
                 let v = tri[k]
                 if let creases, !creases.contains(v) { continue }
                 let p = Vec3(mesh.positions[v])
-                // Step a little way into the triangle so the gradient picks this side of a crease.
+                // Step a short way into the triangle so the gradient picks this side of a crease.
+                // Keep the step small: a real crease jumps right away, while a tight fillet only
+                // curves gradually and must not be split into hard facets.
                 let toward = Vec3(c) - p
                 let len = simd_length(toward)
-                let probe = len > 1e-12 ? p + toward / len * min(len * 0.5, voxel * 0.5) : p
+                let probe = len > 1e-12 ? p + toward / len * min(len * 0.5, voxel * 0.1) : p
                 let n = SIMD3<Float>(lookup.gradient(probe, eps: eps))
                 // Smooth here: keep the shared vertex and its exact normal.
                 if simd_dot(n, mesh.normals[v]) > 0.97 { continue }

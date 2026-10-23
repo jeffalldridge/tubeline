@@ -89,12 +89,6 @@ struct SpatialLookup {
         bucketItems = items
     }
 
-    @inline(__always) private func smin(_ a: Double, _ b: Double) -> Double {
-        guard blend > 0 else { return min(a, b) }
-        let h = max(blend - abs(a - b), 0) / blend
-        return min(a, b) - h * h * blend * 0.25
-    }
-
     @inline(__always) private func distance(_ f: Flat, _ p: Vec3) -> Double {
         switch f.kind {
         case .capsule:
@@ -127,20 +121,76 @@ struct SpatialLookup {
         guard lo < hi else { return 1e9 }
         return prims.withUnsafeBufferPointer { prims in
             bucketItems.withUnsafeBufferPointer { items in
-                var result = Double.infinity
-                var groupMin = Double.infinity
+                // Without blending the union is simply the nearest primitive. This is the default
+                // and the hot path, so it stays free of allocations.
+                if blend <= 0 {
+                    var d = Double.infinity
+                    for k in lo..<hi { d = min(d, distance(prims[Int(items[k])], p)) }
+                    return d.isInfinite ? 1e9 : d
+                }
+                // Each group's distance is the min over its primitives in this bucket (which are
+                // stored grouped). The union is the nearest group, lowered by the strongest fillet
+                // it forms with any other group nearby.
+                var groupDistance: [Double] = []
+                var groupRange: [Range<Int>] = []
                 var currentGroup: Int32 = -1
                 for k in lo..<hi {
                     let f = prims[Int(items[k])]
+                    let d = distance(f, p)
                     if f.group != currentGroup {
-                        if currentGroup >= 0 { result = result.isInfinite ? groupMin : smin(result, groupMin) }
                         currentGroup = f.group
-                        groupMin = .infinity
+                        groupDistance.append(d)
+                        groupRange.append(k..<k + 1)
+                    } else {
+                        groupDistance[groupDistance.count - 1] = min(groupDistance[groupDistance.count - 1], d)
+                        groupRange[groupRange.count - 1] = groupRange[groupRange.count - 1].lowerBound..<k + 1
                     }
-                    groupMin = min(groupMin, distance(f, p))
                 }
-                result = result.isInfinite ? groupMin : smin(result, groupMin)
-                return result.isInfinite ? 1e9 : result
+                guard let nearest = groupDistance.indices.min(by: { groupDistance[$0] < groupDistance[$1] }) else { return 1e9 }
+                let result = groupDistance[nearest]
+                guard blend > 0 else { return result }
+
+                func groupAt(_ g: Int, _ x: Vec3) -> Double {
+                    var d = Double.infinity
+                    for k in groupRange[g] { d = min(d, distance(prims[Int(items[k])], x)) }
+                    return d
+                }
+                /// Unit surface direction of group `g` near `p`. Using the whole stroke, not just its
+                /// nearest segment, keeps the direction smooth along curves and polylines.
+                func direction(_ g: Int) -> Vec3 {
+                    let e = cell * 0.01
+                    let grad = Vec3(groupAt(g, p + Vec3(e, 0, 0)) - groupAt(g, p - Vec3(e, 0, 0)),
+                                    groupAt(g, p + Vec3(0, e, 0)) - groupAt(g, p - Vec3(0, e, 0)),
+                                    groupAt(g, p + Vec3(0, 0, e)) - groupAt(g, p - Vec3(0, 0, e)))
+                    let length = simd_length(grad)
+                    return length > 1e-12 ? grad / length : Vec3(0, 0, 1)
+                }
+
+                // A plain smooth union also inflates places where one stroke sits inside or against
+                // another with parallel surfaces: the top of a T, where the upright's rounded end
+                // touches the bar's top from inside, or the front of any crossing, where both tubes
+                // face the viewer. Those aren't joints, so the fillet fades out as the two surfaces
+                // become parallel and is full where they meet at a real angle, such as the
+                // underside of a T. The fade is gradual so the fillet narrows smoothly.
+                // Every pair of nearby groups forms its own smooth union, and the surface is the
+                // minimum of them all. That is symmetric in the groups, so the field stays
+                // continuous where three or more strokes meet and the nearest one changes.
+                let nearby = groupDistance.indices.filter { groupDistance[$0] - result < blend }
+                guard nearby.count > 1 else { return result }
+                let directions = nearby.map(direction)
+                var union = result
+                for a in 0..<nearby.count {
+                    for b in (a + 1)..<nearby.count {
+                        let da = groupDistance[nearby[a]], db = groupDistance[nearby[b]]
+                        let c = simd_dot(directions[a], directions[b])
+                        let t = simd_clamp((0.9 - c) / 0.8, 0, 1)  // none above ~26°, full past ~96°
+                        let k = blend * t * t * (3 - 2 * t)
+                        guard k > 0 else { continue }
+                        let h = max(k - abs(da - db), 0) / k
+                        union = min(union, min(da, db) - h * h * k * 0.25)
+                    }
+                }
+                return union
             }
         }
     }
