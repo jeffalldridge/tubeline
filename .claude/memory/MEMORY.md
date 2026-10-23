@@ -2,6 +2,12 @@
 
 A rolling log of the last ten sessions, newest first. Older entries move to `archive/`.
 
+## October 22, 2026 (Evening): Per-Sheet Contouring and GLB Export
+
+**Worked on:** Pressure-tested Codex's 0.2.0 follow-up branch (49 core and 74 app tests, full corpus). Profiling showed the dense tetrahedral fallback cost most of the time on 42 icons, so dual contouring now emits one vertex per surface sheet with face-consistent grouping, orients quads from grid-edge signs, and separates coincident corner vertices. Fallbacks fell from 42 to 2 and corpus time from 408 s to 186 s. Added GLB export (engine, CLI `--format`, app Format menu) validated by the Khronos glTF Validator in CI. Fixed empty-state copy, the zero-icon export title, and test preference files that piled up in the app container.
+
+**State after:** 56 core and 82 app tests pass; PR #8 ready to merge into `main` for 0.3.0. GLB not yet tried in After Effects or Cinema 4D.
+
 ## October 22, 2026: Release 0.2.0 for Colleague Review
 
 **Worked on:** Independent engine, export, and app audits followed by geometry validation, safer export state, batch settings with per-field overrides, saved defaults, visible output controls and triangle counts, integer output scaling, and repaired camera commands. Front uses an orthographic camera with zero rotation. USDZ remains XY artwork facing +Z, Y up, with no baked camera or rotation.

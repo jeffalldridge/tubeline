@@ -4,6 +4,10 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- GLB (binary glTF 2.0) export for After Effects, Cinema 4D, Blender, and web tools. Choose USDZ, GLB, or both from the Format menu in the export bar, or pass `--format usdz|glb|both` to the CLI. USDZ remains the default. GLB models use meters with Y up, and Solid Color uses an unlit material so it stays flat. Both files are written from the same mesh and share one name.
+
 ### Fixed
 
 - Fill-only artwork that omits SVG’s default black fill extrudes without an invented outline. Zero-width strokes no longer suppress a fill’s extrusion depth. Explicitly stroked line icons retain their existing fill handling.
@@ -15,6 +19,7 @@ All notable changes to Tubeline are listed here. The format follows [Keep a Chan
 
 ### Changed
 
+- Where strokes cross or nearly touch, the mesher now gives each separate sheet of surface its own vertex and faces every quad exactly, so far fewer icons need the denser fallback mesh. Across the 162-icon test corpus, fallbacks dropped from 42 icons to 2, total conversion time from 408 s to 186 s, and the slowest icon from 29 s to 6.2 s; former fallback icons now average about 58,000 triangles instead of 147,000.
 - Mesh Detail is a standalone control pinned above the scrolling settings. Its slider spans 6–64, with Draft, Low, Balanced, and High presets; App Settings uses the same range.
 - View menu commands provide camera controls and discrete orbit actions. Export cancellation supports Escape and Command-period, and icon removal is available from the menu and list keyboard handling.
 - The window supports a smaller minimum size, long destination names have bounded width, and single-icon exports avoid a redundant selected-item button. Camera inertia respects Reduce Motion.

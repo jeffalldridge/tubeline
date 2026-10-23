@@ -8,6 +8,14 @@ final class AppModelTests: XCTestCase {
         let name = "TubelineTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
+        // Each test gets its own preferences; delete them afterward so runs don't pile up files.
+        // Clearing the domain leaves an empty plist behind, so remove the file too.
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: name)
+            CFPreferencesAppSynchronize(name as CFString)
+            let file = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Preferences/\(name).plist")
+            try? FileManager.default.removeItem(at: file)
+        }
         return defaults
     }
 

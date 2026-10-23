@@ -75,7 +75,11 @@ struct ExportBar: View {
     }
 
     private var exportTitle: String {
-        model.jobs.count == 1 ? "Export Icon" : "Export \(model.jobs.count) Icons"
+        switch model.jobs.count {
+        case 0: "Export Icons"
+        case 1: "Export Icon"
+        case let count: "Export \(count) Icons"
+        }
     }
 
     private var failedJobs: [Job] {

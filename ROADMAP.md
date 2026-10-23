@@ -2,7 +2,7 @@
 
 This is where Tubeline is headed. It's a plan, not a promise, and priorities will shift as people use the app. Each item links to a GitHub issue, where you can follow progress, add a 👍, or describe how you'd use it.
 
-*Last updated October 22, 2026 (version 0.2.0)*
+*Last updated October 22, 2026 (version 0.2.0; 0.3 in progress)*
 
 ## Principles
 
@@ -11,15 +11,15 @@ This is where Tubeline is headed. It's a plan, not a promise, and priorities wil
 - Every icon becomes one closed solid, light enough to animate dozens at a time.
 - The app uses Apple's frameworks, avoids third-party dependencies, and never connects to the network or collects data. It runs on Apple silicon Macs with macOS 14 or later.
 
-## Now (Version 0.2)
+## Now (Version 0.3)
 
-- [Test the output in motion graphics apps, starting with Apple Motion](https://github.com/jeffalldridge/tubeline/issues/3): check size, materials, and performance in real projects. Feedback is welcome.
+- [Export GLB (glTF 2.0) for After Effects and other apps](https://github.com/jeffalldridge/tubeline/issues/2). Ready for release: USDZ stays the default, and you can choose GLB or both. Solid Color uses an unlit material so it stays flat in GLB too.
+- [Test the output in motion graphics apps, starting with Apple Motion](https://github.com/jeffalldridge/tubeline/issues/3): check size, materials, and performance in real projects, including After Effects with GLB. Feedback is welcome.
 - Fix problems found with real-world icons. If one converts badly, please [report it](https://github.com/jeffalldridge/tubeline/issues/new?template=bad-conversion.yml).
 
 ## Next
 
-- [Export GLB (glTF 2.0) for After Effects and other apps](https://github.com/jeffalldridge/tubeline/issues/2). USDZ stays the default, and you can choose GLB or both. Solid Color will use an unlit material so it looks flat in GLB too.
-- [Reduce the cost of manifold output at stroke crossings](https://github.com/jeffalldridge/tubeline/issues/4). Version 0.2 validates every mesh and uses a denser fallback when needed.
+- [Remove the last dense fallbacks at stroke crossings](https://github.com/jeffalldridge/tubeline/issues/4). Version 0.3 contours each sheet of surface separately, so only 2 of 162 test icons still need the denser fallback mesh.
 - [Support miter and bevel corners](https://github.com/jeffalldridge/tubeline/issues/5).
 
 ## Later

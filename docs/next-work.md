@@ -2,13 +2,15 @@
 
 ## Agent Handoff Snapshot
 
-Stopped after code commit `27db866` on `codex/mesh-optimization`. All requested changes are committed and pushed in [draft PR #8](https://github.com/jeffalldridge/tubeline/pull/8); nothing has been merged into `main` or added to the published 0.2.0 download.
+The development branch `codex/mesh-optimization` ([pull request #8](https://github.com/jeffalldridge/tubeline/pull/8)) now also carries per-sheet contouring and GLB export. It is being merged into `main` for the 0.3.0 release; the published 0.2.0 download and its tag are unchanged.
 
-Start review with the pinned 6–64 Mesh Detail control, the default-fill correction, and the [HIG audit](research/2026-10-22-ui-ux-hig-audit.md). The latest local app build and native Draft/High/Balanced checks passed. The last full local suites passed seventy-four app tests and forty-nine core tests before the final UI-only adjustment.
+**Per-sheet contouring (commit `c7864cf`).** Dual contouring now gives each separate sheet of surface in a cell its own vertex, grouping a cell's crossing edges per cube face with the asymptotic decider so neighboring cells always agree. Quads face from each grid edge's inside end toward its outside end instead of guessing from normals, and vertices that solve to the same sharp corner are separated. On the 162-icon corpus the dense tetrahedral fallback dropped from 42 icons to 2 (`54a ai-agent-visibility` and `211a deployment-gpu`, each with a single tunnel-like cell where both neighbors join two sheets), total conversion time dropped from 408 s to 186 s, and the slowest icon from 29.0 s to 6.2 s. Former fallback icons now average about 58,000 triangles instead of 147,000. Icons that never needed the fallback changed by at most 0.85 percent in triangle count, from the exact quad orientation. Every mesh still passes strict validation.
 
-[CI on fill-fix commit `c0a8822`](https://github.com/jeffalldridge/tubeline/actions/runs/39869360713) passed. At handoff, [CI for `27db866`](https://github.com/jeffalldridge/tubeline/actions/runs/39870352555) was pending behind an earlier run; verify its final result before merging. No background development or release publication is scheduled.
+**GLB export (commit `3904c45`).** `GLBWriter` writes binary glTF 2.0 in meters with Y up, linear base colors, and `KHR_materials_unlit` for Solid Color. `Converter.convert(svg:to:)` writes several formats from one mesh. The CLI has `--format usdz|glb|both`; the app has a Format menu in the export bar, remembers it, keeps an icon's files under one name, and reveals every file. All 163 GLB exports of the corpus and samples pass the Khronos glTF Validator with no errors or warnings, and three.js renders them upright, at the expected size, with an unlit material for Solid Color. CI now converts the samples to both formats and validates each.
 
-Remaining acceptance work: actual VoiceOver and Full Keyboard Access, contrast and enlarged text, minimum-size layout, Reduce Motion behavior, and Motion/Cinema 4D import of these follow-up changes. Geometry experiments remain unapplied. Private icons, renders, and diagnostic logs remain outside Git.
+**Verified locally:** 56 engine tests and 82 app tests pass; `scripts/test-cli-output.sh` passes with the new multi-format checks; a native walkthrough of the app found no layout problems beyond the copy fixes that were made.
+
+**Not yet verified:** importing GLB into After Effects, Cinema 4D, or Blender (no copy installed here); VoiceOver and Full Keyboard Access acceptance; Motion acceptance of the newer meshes.
 
 ## Shareable Build
 
