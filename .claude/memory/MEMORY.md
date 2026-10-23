@@ -8,7 +8,9 @@ A rolling log of the last ten sessions, newest first. Older entries move to `arc
 
 **Evidence:** 58 core and 85 app tests pass; CLI safety script passes. Corpus at defaults: 162/162 valid with triangle counts identical to 0.3.0 and dimensions exactly 10×. Corpus at blend 0.5: 162/162 valid, no fallbacks. Default speed matches 0.3.0 after restoring an allocation-free unblended path.
 
-**Next:** Jeff re-tests sizes in After Effects and Motion and blends on real icons; publish 0.3.1 when he says so.
+**Released:** Jeff approved; pushed `main` (CI passed on `ca5b370`) and published notarized 0.3.1, verified from a fresh download.
+
+**Next:** Jeff re-tests sizes in After Effects and Motion and blends on real icons.
 
 ## October 22, 2026 (Evening): Per-Sheet Contouring and GLB Export
 

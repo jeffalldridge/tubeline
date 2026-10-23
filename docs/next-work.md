@@ -14,18 +14,18 @@ The development branch `codex/mesh-optimization` ([pull request #8](https://gith
 
 ## Shareable Build
 
-[Download Tubeline 0.3.0](https://github.com/jeffalldridge/tubeline/releases/download/v0.3.0/Tubeline-0.3.0.dmg). Open the DMG and drag Tubeline to Applications. Requires Apple silicon and macOS 14 or later.
+[Download Tubeline 0.3.1](https://github.com/jeffalldridge/tubeline/releases/download/v0.3.1/Tubeline-0.3.1.dmg). Open the DMG and drag Tubeline to Applications. Requires Apple silicon and macOS 14 or later.
 
-The tag `v0.3.0` points to the release commit on `main`, after pull request #8 merged and CI passed on the merge commit. The release script ran the full test suites; the app, DMG, and CLI were each accepted by Apple's notary service; and the app and DMG are stapled. A fresh download from GitHub matched its checksums, Gatekeeper accepted the DMG and the app inside it (version 0.3.0, build 3, arm64), and the shipped CLI converted all six samples to USDZ and GLB, which passed `usdchecker --arkit` and the Khronos glTF Validator. Notarization used the existing `syntaxlook-notary` keychain profile.
+Version 0.3.1 makes 10× the default Output Scale for both USDZ and GLB, so icons import into After Effects at a workable size, and fixes blended T joints (no bump on top, smooth fillets underneath). The tag `v0.3.1` points to commit `ca5b370`, on which CI passed. Apple's notary service accepted the app, DMG, and CLI; the app and DMG are stapled. A fresh download matched its checksums, Gatekeeper accepted the DMG and the app inside it (version 0.3.1, build 4), and the shipped CLI converted all six samples to USDZ and GLB at matching 10× sizes, all of which passed `usdchecker --arkit` and the Khronos glTF Validator. Notarization used the `syntaxlook-notary` keychain profile.
 
 Published SHA-256 digests:
 
 ```text
-f465e08d1a8ee509a27cb57ee6b385609fadf2495dfa5b2ae259385f404b4c60  Tubeline-0.3.0.dmg
-783dd241a47bde2b8a9e199011494e96d1f47447fca34c0777f9078db69a8f7a  tubeline-cli-0.3.0.zip
+d7fe7ebb400510b1ddc46c65ea6ceda10d9fefa0e2ce3fc7ddedaa542e11c462  Tubeline-0.3.1.dmg
+b73ceb99e9b05ed78f46b4fb7323913f0894642544aa1c317f28891792e7cb2e  tubeline-cli-0.3.1.zip
 ```
 
-Version 0.2.0 remains available under its own tag.
+Earlier versions remain available under their own tags.
 
 ## What to Demonstrate
 
